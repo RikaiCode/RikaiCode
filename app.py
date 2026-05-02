@@ -22,7 +22,7 @@ from collections import Counter
 
 
 try:
-    from zhipuai import ZhipuAI
+    from zai import ZaiClient
     AI_AVAILABLE = True
 except ImportError:
     AI_AVAILABLE = False
@@ -34,7 +34,7 @@ except ImportError:
     pass 
 
 st.set_page_config(
-    page_title="RikaiCode.",
+    page_title="RikaiCode",
     page_icon="🚀",
     layout="wide",
     initial_sidebar_state="collapsed",
@@ -786,7 +786,7 @@ def get_zhipu_client():
     if not api_key:
         return None
         
-    return ZhipuAI(api_key=api_key)
+    return ZaiClient(api_key=api_key)
 
 def ai_analyze_architecture(client, files_dict):
     """Generates a brief summary of the architecture using Rikai (GLM)."""
