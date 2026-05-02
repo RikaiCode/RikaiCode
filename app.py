@@ -25,7 +25,7 @@ st.set_page_config(
 )
 
 
-SKIP_EXTENSIONS = {'.pdf', '.txt', '.rtf', '.json', '.xlsx', '.csv'}
+SKIP_EXTENSIONS = {'.pdf', '.rtf', '.docx', '.pdf', '.xlsx', '.csv'}
 LOGO_PATH = "assets/logo.png" if os.path.exists("assets/logo.png") else "logo.png"
 
 MAX_LINES_INTERACTIVE_PREVIEW = 50000
@@ -327,41 +327,85 @@ def get_grade_from_score(score):
     else: return 'C', "Low score, use with caution. May be inactive or unmaintained."
 
 def analyze_static_quality(files_dict, total_lines):
-    """Fallback for uploaded files (no GitHub API data)."""
-    score = 50 
-    reasons = []
+    """
+    Advanced Static Grading Logic (Unified with GitHub system).
+    Returns (score, breakdown_dict)
+    """
+    score = 0
+    breakdown = {}
     
+    # 1. Documentation (30 pts)
+    # README Check (10 pts)
     has_readme = any('readme' in f.lower() for f in files_dict.keys())
-    if has_readme: 
-        score += 20
-        reasons.append("✅ README found (+20)")
-    else: 
-        reasons.append("❌ No README (-0)")
-        
+    readme_pts = 10 if has_readme else 0
+    
+    # Comment Ratio (20 pts)
     total_comments = 0
     for content in files_dict.values():
+        # Count single line comments and block comments
         total_comments += len(re.findall(r'#.*|//.*|/\*.*?\*/', content, re.DOTALL))
     
     doc_ratio = total_comments / total_lines if total_lines > 0 else 0
-    if doc_ratio > 0.2:
-        score += 15
-        reasons.append("✅ Great documentation (+15)")
-    elif doc_ratio > 0.1:
-        score += 10
-        reasons.append("👍 Good documentation (+10)")
-    else:
-        reasons.append("⚠️ Low documentation (-0)")
-        
+    if doc_ratio > 0.15: comment_pts = 20
+    elif doc_ratio > 0.05: comment_pts = 10
+    else: comment_pts = 0
+    
+    doc_score = readme_pts + comment_pts
+    score += doc_score
+    breakdown['Documentation'] = f"{doc_score}/30 (Readme: {readme_pts}, Comments: {comment_pts})"
+
+    # 2. Structure (30 pts)
+    # Modularity (Avg lines per file) - 15 pts
     avg_lines = total_lines / len(files_dict) if files_dict else 0
-    if avg_lines < 200:
-        score += 15
-        reasons.append("✅ Modular file structure (+15)")
-    elif avg_lines > 1000:
-        score -= 10
-        reasons.append("❌ Bloated files (-10)")
-        
-    grade, desc = get_grade_from_score(score)
-    return grade, desc, reasons
+    if avg_lines < 150: mod_pts = 15
+    elif avg_lines < 300: mod_pts = 10
+    elif avg_lines < 600: mod_pts = 5
+    else: mod_pts = 0
+    
+    # Organization (Entry point & Folders) - 15 pts
+    has_entry = any('main' in f.lower() or 'app' in f.lower() or 'index' in f.lower() for f in files_dict.keys())
+    has_folders = any('/' in f for f in files_dict.keys())
+    org_pts = 0
+    if has_entry: org_pts += 10
+    if has_folders: org_pts += 5
+    
+    struct_score = mod_pts + org_pts
+    score += struct_score
+    breakdown['Structure'] = f"{struct_score}/30 (Modularity: {mod_pts}, Org: {org_pts})"
+
+    # 3. Best Practices (20 pts)
+    # Dependencies (15 pts)
+    has_deps = 'requirements.txt' in files_dict or 'package.json' in files_dict
+    dep_pts = 15 if has_deps else 0
+    
+    # Gitignore (5 pts)
+    has_gitignore = any('.gitignore' in f for f in files_dict.keys())
+    git_pts = 5 if has_gitignore else 0
+    
+    bp_score = dep_pts + git_pts
+    score += bp_score
+    breakdown['Best Practices'] = f"{bp_score}/20 (Deps: {dep_pts}, Gitignore: {git_pts})"
+
+    # 4. Scale (10 pts)
+    # Reward completeness
+    if total_lines > 1000: scale_pts = 10
+    elif total_lines > 200: scale_pts = 5
+    else: scale_pts = 2
+    
+    score += scale_pts
+    breakdown['Scale'] = f"{scale_pts}/10 (Lines: {total_lines})"
+
+    # 5. Stability (10 pts)
+    # Basic integrity check
+    stab_pts = 0
+    if len(files_dict) >= 5: stab_pts = 10
+    elif len(files_dict) > 1: stab_pts = 5
+    else: stab_pts = 2
+    
+    score += stab_pts
+    breakdown['Stability'] = f"{stab_pts}/10 (File Count: {len(files_dict)})"
+
+    return score, breakdown
 
 def build_full_tree(files_dict):
     lines = ["PROJECT ARCHITECTURE", "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"]
@@ -784,7 +828,7 @@ st.markdown("""
 st.markdown("### 🛠️ Input Source")
 input_method = st.selectbox(
     "Select source type", 
-    ["🌐 GitHub Repository URL", "📁 Upload Files (Multi-Select)", "📦 Upload ZIP Folder"],
+    ["🌐 GitHub Repository URL", "📁 Upload Files (Multi-Select)", "📦 Upload ZIP Folder (.zip)"],
     label_visibility="collapsed"
 )
 
@@ -806,7 +850,7 @@ if input_method == "📁 Upload Files (Multi-Select)":
         st.session_state.repo_meta = {} 
         st.session_state.pr_stats = {}
 
-elif input_method == "📦 Upload ZIP Folder":
+elif input_method == "📦 Upload ZIP Folder (.zip)":
     zip_file = st.file_uploader("Drag and drop ZIP", type=['zip'], key="zip_uploader_widget")
     if zip_file:
         st.session_state.files_data = process_zip_file(zip_file)
@@ -930,19 +974,24 @@ if st.session_state.files_data:
             </div>
             """, unsafe_allow_html=True)
     else:
-       
-        grade, grade_desc, reasons = analyze_static_quality(files_data, total_lines)
+        # Updated Logic: Use unified grading system for static files
+        score, breakdown = analyze_static_quality(files_data, total_lines)
+        grade, grade_desc = get_grade_from_score(score)
+        
         col_grade, col_stats = st.columns([1, 3])
         with col_grade:
-            reason_text = "<br>".join(reasons)
             st.markdown(f"""
             <div class="grade-box">
-                <div style="font-size: 1.2rem; color: #ededed;">Static Grade</div>
+                <div style="font-size: 1.2rem; color: #ededed;">Static Rank</div>
                 <div class="grade-letter">{grade}</div>
                 <div style="color: #a0a0a0;">{grade_desc}</div>
                 <div class="grade-reason">
-                    <strong>Static Analysis:</strong><br>
-                    {reason_text}
+                    <strong>Score Breakdown:</strong><br>
+                    • Documentation: {breakdown.get('Documentation', 'N/A')}<br>
+                    • Structure: {breakdown.get('Structure', 'N/A')}<br>
+                    • Best Practices: {breakdown.get('Best Practices', 'N/A')}<br>
+                    • Scale: {breakdown.get('Scale', 'N/A')}<br>
+                    • Stability: {breakdown.get('Stability', 'N/A')}
                 </div>
             </div>
             """, unsafe_allow_html=True)
