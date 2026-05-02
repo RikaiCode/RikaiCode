@@ -10,7 +10,8 @@ import time
 import re
 import json
 import math
-import gc  
+import gc
+import urllib.parse
 from PIL import Image
 from docx import Document
 from fpdf import FPDF
@@ -223,9 +224,9 @@ def get_file_stats(files_dict):
         total_size += len(content)
     return ext_counts, total_lines, total_size
 
-def calculate_github_quality_score(meta, commits, pr_stats):
+def calculate_repo_quality_score(meta, commits, pr_stats):
     """
-    Advanced Grading Logic based on GitHub Metrics.
+    Unified Grading Logic for GitHub/GitLab Metrics.
     Returns (score, breakdown_dict)
     """
     score = 0
@@ -259,8 +260,12 @@ def calculate_github_quality_score(meta, commits, pr_stats):
     recency_pts = 0
     if last_commit_str:
         try:
-            last_date = datetime.strptime(last_commit_str, "%Y-%m-%dT%H:%M:%SZ")
-            days_diff = (datetime.utcnow() - last_date).days
+      
+            clean_date = last_commit_str.replace('Z', '+00:00')
+            last_date = datetime.fromisoformat(clean_date)
+      
+            now = datetime.now(last_date.tzinfo)
+            days_diff = (now - last_date).days
             
             if days_diff < 30: recency_pts = 15
             elif days_diff < 180: recency_pts = 10
@@ -342,7 +347,7 @@ def analyze_static_quality(files_dict, total_lines):
     # Comment Ratio (20 pts)
     total_comments = 0
     for content in files_dict.values():
-        # Count single line comments and block comments
+
         total_comments += len(re.findall(r'#.*|//.*|/\*.*?\*/', content, re.DOTALL))
     
     doc_ratio = total_comments / total_lines if total_lines > 0 else 0
@@ -663,7 +668,7 @@ def process_github_url(url):
     progress_bar = st.progress(0, text="Initializing...")
     
     try:
-        progress_bar.progress(10, text="📡 Fetching repository metadata...")
+        progress_bar.progress(10, text="📡 Fetching GitHub metadata...")
         meta_r = requests.get(api_base)
         if meta_r.status_code == 200:
             data = meta_r.json()
@@ -799,6 +804,209 @@ def process_github_url(url):
         
     return files_dict, repo_meta, pr_stats
 
+def process_gitlab_url(url):
+    files_dict = {}
+    repo_meta = {}
+    pr_stats = {}
+    
+    if url.endswith('.git'): url = url[:-4]
+    
+    try:
+       
+        parts = url.rstrip('/').split('/')
+        if 'gitlab.com' not in parts:
+            st.error("Invalid GitLab URL. Must contain gitlab.com")
+            return {}, {}, {}
+            
+        idx = parts.index('gitlab.com')
+        path_parts = parts[idx+1:]
+        if len(path_parts) < 1:
+             st.error("Invalid GitLab URL: No project path found.")
+             return {}, {}, {}
+        
+        path = '/'.join(path_parts)
+        
+    except Exception as e:
+        st.error(f"Invalid GitLab URL format: {e}")
+        return {}, {}, {}
+
+
+    encoded_path = urllib.parse.quote_plus(path)
+    api_base = f"https://gitlab.com/api/v4/projects/{encoded_path}"
+    
+    progress_bar = st.progress(0, text="Initializing GitLab Fetch...")
+    
+    try:
+        progress_bar.progress(10, text="📡 Fetching GitLab metadata...")
+        meta_r = requests.get(api_base)
+        
+        if meta_r.status_code == 200:
+            data = meta_r.json()
+            repo_meta['stars'] = data.get('star_count', 0)
+            repo_meta['forks'] = data.get('forks_count', 0)
+            repo_meta['watchers'] = data.get('star_count', 0) 
+            repo_meta['open_issues'] = data.get('open_issues_count', 0)
+            repo_meta['archived'] = data.get('archived', False)
+            
+       
+            repo_meta['language'] = 'N/A'
+            try:
+                lang_r = requests.get(f"{api_base}/languages")
+                if lang_r.status_code == 200:
+                    langs = lang_r.json()
+                    if langs:
+             
+                        main_lang = max(langs, key=langs.get)
+                        repo_meta['language'] = main_lang
+            except: pass
+            
+         
+            repo_meta['pushed_at'] = data.get('last_activity_at')
+            repo_meta['created_at'] = data.get('created_at')
+            
+            if repo_meta['created_at']:
+              
+                created_str = repo_meta['created_at'].replace('Z', '+00:00')
+                created = datetime.fromisoformat(created_str)
+                age_days = (datetime.now(created.tzinfo) - created).days
+                repo_meta['age_years'] = round(age_days / 365, 1)
+                
+            default_branch = data.get('default_branch', 'main')
+        else:
+            progress_bar.empty()
+            st.error(f"GitLab API Error: {meta_r.status_code} - Project might be private or URL incorrect.")
+            return {}, {}, {}
+
+      
+        progress_bar.progress(20, text="📡 Fetching commit history...")
+        commits_r = requests.get(f"{api_base}/repository/commits?per_page=100")
+        commit_dates = []
+        if commits_r.status_code == 200:
+            for c in commits_r.json():
+                try:
+                    date_str = c['created_at']
+    
+                    d = datetime.fromisoformat(date_str.replace('Z', '+00:00')).date()
+                    commit_dates.append(d)
+                except: pass
+            repo_meta['commit_dates'] = commit_dates
+            
+  
+        progress_bar.progress(30, text="📡 Analyzing Merge Requests...")
+        try:
+  
+            def get_total_mr_count(state):
+        
+                r = requests.get(f"{api_base}/merge_requests?state={state}&per_page=1")
+                if r.status_code == 200:
+                   
+                    total = r.headers.get('X-Total')
+                    if total:
+                        return int(total)
+                    
+                    
+                    count = 0
+                    page = 1
+                    while True:
+                        r_page = requests.get(f"{api_base}/merge_requests?state={state}&per_page=100&page={page}")
+                        if r_page.status_code != 200: break
+                        items = r_page.json()
+                        count += len(items)
+                        if len(items) < 100: break
+                        page += 1
+                    return count
+                return 0
+
+            open_count = get_total_mr_count('opened')
+            merged_count = get_total_mr_count('merged')
+            closed_count = get_total_mr_count('closed')
+            
+            pr_stats['open'] = open_count
+            pr_stats['merged'] = merged_count
+            pr_stats['closed_rejected'] = closed_count
+            
+            total_finalized = merged_count + closed_count
+            if total_finalized > 0:
+                pr_stats['merge_rate'] = merged_count / total_finalized
+            else:
+                pr_stats['merge_rate'] = 0
+            
+            pr_stats['total_prs'] = open_count + merged_count + closed_count
+                
+        except Exception as e:
+            st.warning(f"Could not fetch MR stats: {e}")
+
+
+        progress_bar.progress(40, text="⬇️ Downloading archive...")
+        archive_url = f"{api_base}/repository/archive.zip?sha={default_branch}"
+        
+        r = requests.get(archive_url, stream=True)
+        if r.status_code != 200:
+
+            archive_url = f"{api_base}/repository/archive.zip?sha=master"
+            r = requests.get(archive_url, stream=True)
+            
+        if r.status_code != 200:
+            progress_bar.empty()
+            st.error("Could not fetch repository content. Check if project is public.")
+            return {}, {}, {}
+
+        total_size = int(r.headers.get('content-length', 0))
+        chunk_data = []
+        downloaded = 0
+        
+        for chunk in r.iter_content(chunk_size=8192):
+            if chunk:
+                chunk_data.append(chunk)
+                downloaded += len(chunk)
+                if total_size > 0:
+                    pct = 50 + int((downloaded / total_size) * 30)
+                    progress_bar.progress(pct, text=f"⬇️ Downloading... {int(downloaded/1024)}/{int(total_size/1024)} KB")
+        
+        progress_bar.progress(80, text="📦 Decompressing...")
+        zip_data = io.BytesIO(b''.join(chunk_data))
+        
+        with zipfile.ZipFile(zip_data) as z:
+            file_list = z.namelist()
+            total_files = len(file_list)
+            processed_count = 0
+            
+            for filename in file_list:
+                if filename.endswith('/'): continue
+                
+                ext = os.path.splitext(filename)[1].lower()
+               
+                clean_name = filename.split('/', 1)[-1] if '/' in filename else filename
+
+                if ext in SKIP_EXTENSIONS:
+                    files_dict[clean_name] = "" 
+                else:
+                    try:
+                        with z.open(filename) as f:
+                            content = f.read().decode('utf-8')
+                            files_dict[clean_name] = content
+                            del content 
+                    except: pass
+                
+                processed_count += 1
+                if total_files > 0:
+                    pct = 80 + int((processed_count / total_files) * 20)
+                    progress_bar.progress(pct, text=f"⚙️ Processing {processed_count}/{total_files}")
+        
+        progress_bar.progress(100, text="✔️ Done!")
+        time.sleep(0.5)
+        progress_bar.empty()
+        
+        del chunk_data
+        del zip_data
+        gc.collect()
+        
+    except Exception as e:
+        progress_bar.empty()
+        st.error(f"Error: {str(e)}")
+        
+    return files_dict, repo_meta, pr_stats
+
 
 if 'files_data' not in st.session_state: st.session_state.files_data = {}
 if 'repo_meta' not in st.session_state: st.session_state.repo_meta = {}
@@ -828,7 +1036,7 @@ st.markdown("""
 st.markdown("### 🛠️ Input Source")
 input_method = st.selectbox(
     "Select source type", 
-    ["🌐 GitHub Repository URL", "📁 Upload Files (Multi-Select)", "📦 Upload ZIP Folder (.zip)"],
+    ["🌐 GitHub Repository URL", "🦊 GitLab Repository URL", "📁 Upload Files (Multi-Select)", "📦 Upload ZIP Folder (.zip)"],
     label_visibility="collapsed"
 )
 
@@ -861,7 +1069,6 @@ elif input_method == "🌐 GitHub Repository URL":
     url = st.text_input("Enter Public GitHub URL", placeholder="https://github.com/user/repo", key="github_url_input")
     if st.button("Fetch Repository", key="fetch_github_btn"):
         if url:
-          
             st.session_state.files_data = {}
             st.session_state.repo_meta = {}
             st.session_state.pr_stats = {}
@@ -873,12 +1080,26 @@ elif input_method == "🌐 GitHub Repository URL":
                 st.session_state.repo_meta = meta
                 st.session_state.pr_stats = pr_stats
 
+elif input_method == "🦊 GitLab Repository URL":
+    url = st.text_input("Enter Public GitLab URL", placeholder="https://gitlab.com/user/repo", key="gitlab_url_input")
+    if st.button("Fetch Repository", key="fetch_gitlab_btn"):
+        if url:
+            st.session_state.files_data = {}
+            st.session_state.repo_meta = {}
+            st.session_state.pr_stats = {}
+            gc.collect()
+            
+            with st.spinner("Loading GitLab repository… May take some time... ⏳"):
+                files, meta, pr_stats = process_gitlab_url(url)
+                st.session_state.files_data = files
+                st.session_state.repo_meta = meta
+                st.session_state.pr_stats = pr_stats
 
 
 st.markdown(f"""
 <div class="info-box">
     <p><strong>Note:</strong> Large repositories may take time to process. Please wait for the architecture to load.</p>
-    <p><strong>Local Files:</strong> If uploading files/ZIPs manually, GitHub stats and grading will be estimated based on static analysis only.</p>
+    <p><strong>Local Files:</strong> If uploading files/ZIPs manually, stats and grading will be estimated based on static analysis only.</p>
     <p><strong>Optimization:</strong> To reduce processing time, the following file types are excluded from content analysis but listed in architecture: <strong>{', '.join(SKIP_EXTENSIONS)}</strong>.</p>
 </div>
 """, unsafe_allow_html=True)
@@ -918,15 +1139,15 @@ if st.session_state.files_data:
         
 
         merge_rate = pr_stats.get('merge_rate', 0)
-        dm4.metric("🔄 PR Merge Rate", f"{merge_rate:.0%}", help="Percentage of closed PRs that were merged. High rate = healthy contribution flow.")
+        dm4.metric("🔄 MR Merge Rate", f"{merge_rate:.0%}", help="Percentage of closed MRs/PRs that were merged. High rate = healthy contribution flow.")
 
 
-        st.markdown("#### ~ Pull Request Deep Dive")
+        st.markdown("#### ~ Merge/Pull Request Deep Dive")
         pc1, pc2, pc3, pc4 = st.columns(4)
-        pc1.metric("Open PRs", pr_stats.get('open', 'N/A'), help="Pull Requests currently open and awaiting review or merge.")
-        pc2.metric("Merged PRs", pr_stats.get('merged', 'N/A'), help="Pull Requests that have been successfully merged into the codebase.")
-        pc3.metric("Closed (Rejected)", pr_stats.get('closed_rejected', 'N/A'), help="Pull Requests that were closed without being merged.")
-        pc4.metric("📖 Total PRs", pr_stats.get('total_prs', 'N/A'), help="Total number of Pull Requests created in the repository.")
+        pc1.metric("Open MRs", pr_stats.get('open', 'N/A'), help="Requests currently open and awaiting review or merge.")
+        pc2.metric("Merged MRs", pr_stats.get('merged', 'N/A'), help="Requests that have been successfully merged.")
+        pc3.metric("Closed (Rejected)", pr_stats.get('closed_rejected', 'N/A'), help="Requests that were closed without being merged.")
+        pc4.metric("📖 Total MRs", pr_stats.get('total_prs', 'N/A'), help="Total number of Merge/Pull Requests.")
         
         st.markdown("---")
         if 'commit_dates' in repo_meta and repo_meta['commit_dates']:
@@ -952,7 +1173,7 @@ if st.session_state.files_data:
     
 
     if repo_meta:
-        score, breakdown = calculate_github_quality_score(repo_meta, repo_meta.get('commit_dates', []), pr_stats)
+        score, breakdown = calculate_repo_quality_score(repo_meta, repo_meta.get('commit_dates', []), pr_stats)
         grade, grade_desc = get_grade_from_score(score)
         
         col_grade, col_stats = st.columns([1, 3])
@@ -974,7 +1195,6 @@ if st.session_state.files_data:
             </div>
             """, unsafe_allow_html=True)
     else:
-        # Updated Logic: Use unified grading system for static files
         score, breakdown = analyze_static_quality(files_data, total_lines)
         grade, grade_desc = get_grade_from_score(score)
         
@@ -1002,8 +1222,8 @@ if st.session_state.files_data:
         m1.metric("Total Files", len(files_data))
         m2.metric("Total Lines", f"{total_lines:,}")
         m3.metric("Characters", f"{total_size:,}")
-        m4.metric("Est. Tokens", f"{token_est:,}")
-        m5.metric("Est. Size", f"{total_size/1024:.1f} KB")
+        m4.metric("Est. Tokens", f"{token_est:,}", help="Approximation of total tokens (1 token ≈ 4 chars). Useful for LLM context limits.")
+        m5.metric("Est. Size", f"{total_size/1024:.1f} KB", help="Total size of the concatenated text content in Kilobytes.")
 
     
     is_huge_repo = total_lines > MAX_LINES_INTERACTIVE_PREVIEW
@@ -1013,35 +1233,32 @@ if st.session_state.files_data:
 
     st.markdown("---")
     st.markdown("### ~ Code Frame")
+
+
+    st.markdown("#### Detected Dependencies")
+    with st.expander("View Dependencies", expanded=False):
+        deps = scan_dependencies(files_data)
+        if deps:
+            deps_html = " ".join([f"<span class='dep-tag'>{d}</span>" for d in deps])
+            st.markdown(deps_html, unsafe_allow_html=True)
+        else:
+            st.info("No external dependencies found in common files.")
     
-    ac1, ac2 = st.columns(2)
-    
-    with ac1:
-        st.markdown("#### Detected Dependencies")
-        with st.expander("View Dependencies", expanded=False):
-            deps = scan_dependencies(files_data)
-            if deps:
-                deps_html = " ".join([f"<span class='dep-tag'>{d}</span>" for d in deps])
-                st.markdown(deps_html, unsafe_allow_html=True)
-            else:
-                st.info("No external dependencies found in common files.")
-    
-    with ac2:
-        st.markdown("####  Code Structure (Classes/Funcs)")
-        with st.expander("View Structure", expanded=False):
-            structure = extract_code_structure(files_data)
-            if structure:
-                for fname, items in structure.items():
-                    st.markdown(f"**{fname}**")
-                    if items['classes']:
-                        classes_str = ", ".join(items['classes'])
-                        st.markdown(f"▫️ Classes: `{classes_str}`")
-                    if items['functions']:
-                        funcs_str = ", ".join(items['functions'])
-                        st.markdown(f"▫️ Functions: `{funcs_str}`")
-                    st.markdown("---")
-            else:
-                st.info("No structure detected or files too large.")
+    st.markdown("####  Code Structure (Classes/Funcs)")
+    with st.expander("View Structure", expanded=False):
+        structure = extract_code_structure(files_data)
+        if structure:
+            for fname, items in structure.items():
+                st.markdown(f"**{fname}**")
+                if items['classes']:
+                    classes_str = ", ".join(items['classes'])
+                    st.markdown(f"▫️ Classes: `{classes_str}`")
+                if items['functions']:
+                    funcs_str = ", ".join(items['functions'])
+                    st.markdown(f"▫️ Functions: `{funcs_str}`")
+                st.markdown("---")
+        else:
+            st.info("No structure detected or files too large.")
 
 
     st.markdown("---")
@@ -1091,14 +1308,16 @@ if st.session_state.files_data:
         st.markdown("### 📂 Code Preview")
         
         def update_search(): st.session_state.search_term = st.session_state.search_input
+        
+      
         search_val = st.text_input(
-    "",
-    value=st.session_state.search_term,
-    key="search_input",
-    on_change=update_search,
-    placeholder="Enter a file name to search...",
-    label_visibility="collapsed"
-)
+            "Search files",
+            value=st.session_state.search_term,
+            key="search_input",
+            on_change=update_search,
+            placeholder="Enter a file name to search...",
+            label_visibility="collapsed"
+        )
         
         for filename, content in files_data.items():
             if st.session_state.search_term.lower() not in filename.lower():
