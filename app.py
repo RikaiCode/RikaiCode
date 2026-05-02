@@ -25,6 +25,9 @@ st.set_page_config(
 )
 
 
+SKIP_EXTENSIONS = {'.pdf', '.txt', '.rtf', '.json', '.xlsx', '.csv'}
+LOGO_PATH = "assets/logo.png" if os.path.exists("assets/logo.png") else "logo.png"
+
 MAX_LINES_INTERACTIVE_PREVIEW = 50000
 
 
@@ -186,14 +189,23 @@ st.markdown("""
 
 
 def load_logo():
-    if os.path.exists("logo.png"):
+
+    if os.path.exists("assets/logo.png"):
+        try:
+            img = Image.open("assets/logo.png")
+            buf = io.BytesIO()
+            img.save(buf, format="PNG")
+            data = base64.b64encode(buf.getvalue()).decode("utf-8")
+            return f"data:image/png;base64,{data}"
+        except: pass
+    elif os.path.exists("logo.png"):
         try:
             img = Image.open("logo.png")
             buf = io.BytesIO()
             img.save(buf, format="PNG")
             data = base64.b64encode(buf.getvalue()).decode("utf-8")
             return f"data:image/png;base64,{data}"
-        except: return None
+        except: pass
     return None
 
 def estimate_tokens(text):
@@ -380,6 +392,7 @@ def create_txt_content(files_dict):
     output = StringIO()
     output.write("RIKAI CODE EXPORT\n")
     output.write("==========================================\n\n")
+    output.write(f"Note: The following file types were excluded from detailed content processing to optimize performance: {', '.join(SKIP_EXTENSIONS)}\n\n")
     output.write(build_full_tree(files_dict) + "\n\n")
     output.write("FILE CONTENTS\n")
     output.write("==========================================\n\n")
@@ -391,7 +404,9 @@ def create_txt_content(files_dict):
 
 def export_html(files_dict):
     html = "<html><head><style>body{font-family:monospace; background:#171717; color:#ededed;} .file{margin-bottom:20px; border-bottom:1px solid #333;} h3{color:#d3a0eb;}</style></head><body>"
-    html += f"<h1>RikaiCode Export</h1><pre>{build_full_tree(files_dict)}</pre><hr>"
+    html += f"<h1>RikaiCode Export</h1>"
+    html += f"<p><strong>Note:</strong> The following file types were excluded from detailed content processing to optimize performance: {', '.join(SKIP_EXTENSIONS)}</p>"
+    html += f"<pre>{build_full_tree(files_dict)}</pre><hr>"
     for k, v in files_dict.items():
         html += f"<div class='file'><h3>{k}</h3><pre>{v}</pre></div>"
     html += "</body></html>"
@@ -401,6 +416,7 @@ def export_html(files_dict):
 def export_docx(files_dict):
     doc = Document()
     doc.add_heading('RikaiCode Repository Export', 0)
+    doc.add_paragraph(f"Note: The following file types were excluded from detailed content processing to optimize performance: {', '.join(SKIP_EXTENSIONS)}")
     doc.add_paragraph(build_full_tree(files_dict))
     for filename, content in files_dict.items():
         doc.add_heading(filename, level=1)
@@ -412,29 +428,75 @@ def export_docx(files_dict):
     return file_stream
 
 def export_pdf(files_dict):
-    pdf = FPDF()
+    class PDF(FPDF):
+        def __init__(self):
+            super().__init__()
+            self.logo_path = LOGO_PATH
+        
+        def footer(self):
+       
+            self.set_y(-15)
+            self.set_font('Arial', 'I', 8)
+            
+
+            gen_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            self.cell(0, 10, f'Generated on {gen_date}', 0, 0, 'R')
+            
+            
+            if os.path.exists(self.logo_path):
+
+                self.image(self.logo_path, x=10, y=self.h - 12, h=5)
+
+                self.set_xy(17, self.h - 12)
+                self.cell(0, 5, 'RikaiCode', 0, 0, 'L')
+            else:
+                self.set_x(10)
+                self.cell(0, 10, 'RikaiCode', 0, 0, 'L')
+
+    pdf = PDF()
     pdf.add_page()
     pdf.set_font("Arial", size=12)
     pdf.cell(200, 10, txt="RikaiCode Repository Export", ln=1, align='C')
-    pdf.ln(10)
+    pdf.ln(5)
+    pdf.set_font("Arial", size=10)
+    pdf.multi_cell(0, 5, f"Note: The following file types were excluded from detailed content processing to optimize performance: {', '.join(SKIP_EXTENSIONS)}")
+    pdf.ln(5)
+    
     for filename, content in files_dict.items():
         pdf.set_font("Arial", 'B', size=14)
         pdf.cell(200, 10, txt=filename, ln=1)
         pdf.set_font("Arial", size=10)
         try:
-            safe_content = content.encode('latin-1', 'replace').decode('latin-1')
-            if len(safe_content) > 5000: safe_content = safe_content[:5000] + "\n... [TRUNCATED]"
+    
+            if len(content) > 5000:
+                safe_content = content[:5000] + "\n... [TRUNCATED FOR PDF PREVIEW]"
+            else:
+                safe_content = content
+                
+            safe_content = safe_content.encode('latin-1', 'replace').decode('latin-1')
             pdf.multi_cell(0, 5, safe_content)
             pdf.ln(5)
         except: pass
-    file_stream = io.BytesIO()
-    pdf.output(file_stream)
+    
+
+    pdf_bytes = pdf.output(dest='S')
+    
+
+    if isinstance(pdf_bytes, str):
+        pdf_bytes = pdf_bytes.encode('latin-1')
+        
+    file_stream = io.BytesIO(pdf_bytes)
     file_stream.seek(0)
     return file_stream
 
 def export_json(files_dict):
     data = {
-        "metadata": { "generated_at": datetime.now().isoformat(), "file_count": len(files_dict), "architecture": build_full_tree(files_dict) },
+        "metadata": { 
+            "generated_at": datetime.now().isoformat(), 
+            "file_count": len(files_dict), 
+            "architecture": build_full_tree(files_dict),
+            "excluded_types": list(SKIP_EXTENSIONS)
+        },
         "files": [{"name": k, "content": v} for k, v in files_dict.items()]
     }
     return json.dumps(data, indent=2)
@@ -479,6 +541,10 @@ def extract_code_structure(files_dict):
     
     for filename in target_files[:200]: # Limit to 200 files for performance
         content = files_dict[filename]
+        
+
+        if not content: continue
+        
         classes = re.findall(r'class\s+([A-Za-z0-9_]+)', content)
         funcs = re.findall(r'def\s+([A-Za-z0-9_]+)', content)
         
@@ -499,8 +565,13 @@ def process_uploaded_files(uploaded_files):
     files_dict = {}
     for f in uploaded_files:
         try:
-            content = f.read().decode('utf-8')
-            files_dict[f.name] = content
+      
+            ext = os.path.splitext(f.name)[1].lower()
+            if ext in SKIP_EXTENSIONS:
+                files_dict[f.name] = ""
+            else:
+                content = f.read().decode('utf-8')
+                files_dict[f.name] = content
      
             del content
         except: pass
@@ -512,10 +583,17 @@ def process_zip_file(zip_file):
     with zipfile.ZipFile(zip_file) as z:
         for filename in z.namelist():
             if filename.endswith('/'): continue
+            
+            ext = os.path.splitext(filename)[1].lower()
+            clean_name = filename.split('/', 1)[-1] if '/' in filename else filename
+            
+            if ext in SKIP_EXTENSIONS:
+                files_dict[clean_name] = "" 
+                continue
+
             try:
                 with z.open(filename) as f:
                     content = f.read().decode('utf-8')
-                    clean_name = filename.split('/', 1)[-1] if '/' in filename else filename
                     files_dict[clean_name] = content
                     del content 
             except: pass
@@ -642,13 +720,20 @@ def process_github_url(url):
             
             for filename in file_list:
                 if filename.endswith('/'): continue
-                try:
-                    with z.open(filename) as f:
-                        content = f.read().decode('utf-8')
-                        clean_name = filename.split('/', 1)[-1] if '/' in filename else filename
-                        files_dict[clean_name] = content
-                        del content 
-                except: pass
+                
+              
+                ext = os.path.splitext(filename)[1].lower()
+                clean_name = filename.split('/', 1)[-1] if '/' in filename else filename
+
+                if ext in SKIP_EXTENSIONS:
+                    files_dict[clean_name] = "" 
+                else:
+                    try:
+                        with z.open(filename) as f:
+                            content = f.read().decode('utf-8')
+                            files_dict[clean_name] = content
+                            del content 
+                    except: pass
                 
                 processed_count += 1
                 if total_files > 0:
@@ -746,10 +831,11 @@ elif input_method == "🌐 GitHub Repository URL":
 
 
 
-st.markdown("""
+st.markdown(f"""
 <div class="info-box">
     <p><strong>Note:</strong> Large repositories may take time to process. Please wait for the architecture to load.</p>
     <p><strong>Local Files:</strong> If uploading files/ZIPs manually, GitHub stats and grading will be estimated based on static analysis only.</p>
+    <p><strong>Optimization:</strong> To reduce processing time, the following file types are excluded from content analysis but listed in architecture: <strong>{', '.join(SKIP_EXTENSIONS)}</strong>.</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -820,7 +906,7 @@ if st.session_state.files_data:
     content_text = create_txt_content(files_data)
     token_est = estimate_tokens(content_text)
     
-    # 1. Code Quality Grading
+
     if repo_meta:
         score, breakdown = calculate_github_quality_score(repo_meta, repo_meta.get('commit_dates', []), pr_stats)
         grade, grade_desc = get_grade_from_score(score)
