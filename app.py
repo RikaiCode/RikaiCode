@@ -1373,7 +1373,10 @@ gc.collect()
 
 st.markdown("""
 <div class="footer-custom">
-    <div>Made with 🤍  by <strong>Aurumz</strong></div>
-    <div><a href="https://github.com/aurumz-rgb/RikaiCode" target="_blank" class="footer-link">© 2026 aurumz-rgb — AGPL 3.0 License</a></div>
+    <div style="flex: 1; text-align: left;">Made with 🤍  by <strong>Aurumz</strong></div>
+    <div style="flex: 1; text-align: center;">
+        <a href="https://github.com/aurumz-rgb/RikaiCode" target="_blank" class="footer-link">© 2026 aurumz-rgb — AGPL 3.0 License</a>
+    </div>
+    <div style="flex: 1;"></div>
 </div>
 """, unsafe_allow_html=True)
