@@ -5,6 +5,7 @@ import io
 import zipfile
 import requests
 import plotly.express as px
+import plotly.graph_objects as go
 import pandas as pd
 import time
 import re
@@ -12,14 +13,28 @@ import json
 import math
 import gc
 import urllib.parse
+import markdown 
 from PIL import Image
 from docx import Document
 from fpdf import FPDF
 from datetime import datetime, timedelta
 from collections import Counter
 
+
+try:
+    from zhipuai import ZhipuAI
+    AI_AVAILABLE = True
+except ImportError:
+    AI_AVAILABLE = False
+
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass 
+
 st.set_page_config(
-    page_title="RikaiCode",
+    page_title="RikaiCode.",
     page_icon="🚀",
     layout="wide",
     initial_sidebar_state="collapsed",
@@ -153,8 +168,8 @@ st.markdown("""
     @keyframes float {
         0% { transform: translateY(0px); } 50% { transform: translateY(-10px); } 100% { transform: translateY(0px); }
     }
-    .logo-container { display: flex; justify-content: center; margin-bottom: 10px; }
-    .logo-img { width: 120px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); animation: float 3s ease-in-out infinite; }
+    .logo-container { display: flex; justify-content: center; margin-bottom: 1px; }
+    .logo-img { width: 160px; }
 
 
     .stTextInput > div > div > input, .stSelectbox > div > div > div {
@@ -181,6 +196,36 @@ st.markdown("""
         margin: 2px;
         font-size: 0.85rem;
         border: 1px solid #333;
+    }
+    
+    .security-alert {
+        background-color: rgba(255, 75, 75, 0.1);
+        border-left: 4px solid #ff4b4b;
+        padding: 10px;
+        margin-bottom: 10px;
+        border-radius: 4px;
+    }
+
+
+    .ai-response-box {
+        background-color: #121212;
+        border: 1px solid #444;
+        border-radius: 8px;
+        padding: 15px;
+        margin-top: 10px;
+        color: #ededed;
+  
+    }
+    
+  
+    .ai-response-box h3 {
+        color: #d3a0eb !important;
+        margin-top: 1rem;
+        margin-bottom: 0.5rem;
+    }
+    
+    .ai-response-box strong {
+        color: #fff !important;
     }
 
     #MainMenu {visibility: hidden;} footer {visibility: hidden;}
@@ -254,7 +299,6 @@ def calculate_repo_quality_score(meta, commits, pr_stats):
     breakdown['Popularity'] = f"{popularity_score}/30 (Stars: {star_pts}, Fork Ratio: {fork_pts})"
 
     # 2. Activity (25 pts)
-    # Recency
     last_commit_str = meta.get('pushed_at', None)
     activity_score = 0
     recency_pts = 0
@@ -392,7 +436,6 @@ def analyze_static_quality(files_dict, total_lines):
     breakdown['Best Practices'] = f"{bp_score}/20 (Deps: {dep_pts}, Gitignore: {git_pts})"
 
     # 4. Scale (10 pts)
-    # Reward completeness
     if total_lines > 1000: scale_pts = 10
     elif total_lines > 200: scale_pts = 5
     else: scale_pts = 2
@@ -401,7 +444,6 @@ def analyze_static_quality(files_dict, total_lines):
     breakdown['Scale'] = f"{scale_pts}/10 (Lines: {total_lines})"
 
     # 5. Stability (10 pts)
-    # Basic integrity check
     stab_pts = 0
     if len(files_dict) >= 5: stab_pts = 10
     elif len(files_dict) > 1: stab_pts = 5
@@ -608,6 +650,224 @@ def extract_code_structure(files_dict):
         
     return structure
 
+def scan_security_issues(files_dict):
+    """Scans for potential hardcoded secrets."""
+    issues = []
+
+    patterns = {
+        "AWS Access Key": r"AKIA[0-9A-Z]{16}",
+        "Generic Secret": r"(?i)(api_key|apikey|secret|password|token)\s*=\s*['\"][^'\"]+['\"]",
+        "Private Key": r"-----BEGIN (RSA |DSA |EC |OPENSSH )?PRIVATE KEY-----"
+    }
+    
+    for filename, content in files_dict.items():
+     
+        if len(content) > 100000: continue
+        
+        for issue_type, pattern in patterns.items():
+            matches = re.findall(pattern, content)
+            if matches:
+                
+                lines = content.splitlines()
+                line_nums = []
+                for i, line in enumerate(lines, 1):
+                    if re.search(pattern, line):
+                        line_nums.append(i)
+                
+                issues.append({
+                    "file": filename,
+                    "type": issue_type,
+                    "count": len(matches),
+                    "lines": line_nums[:5] 
+                })
+    return issues
+
+def scan_tech_debt(files_dict):
+    """Scans for TODO, FIXME, HACK comments."""
+    debt_items = []
+    patterns = {
+        "TODO": r"(?:#|//)\s*TODO:?\s*(.*)",
+        "FIXME": r"(?:#|//)\s*FIXME:?\s*(.*)",
+        "HACK": r"(?:#|//)\s*HACK:?\s*(.*)",
+        "BUG": r"(?:#|//)\s*BUG:?\s*(.*)"
+    }
+    
+    for name, content in files_dict.items():
+     
+        if not name.endswith(('.py', '.js', '.ts', '.java', '.go', '.rs', '.c', '.cpp')): continue
+        lines = content.splitlines()
+        for i, line in enumerate(lines, 1):
+            for tag, pat in patterns.items():
+                match = re.search(pat, line, re.IGNORECASE)
+                if match:
+                    msg = match.group(1).strip() if match.groups() else ""
+                    debt_items.append({
+                        "file": name,
+                        "line": i,
+                        "type": tag,
+                        "message": msg[:50]
+                    })
+    return debt_items
+
+def detect_infrastructure(files_dict):
+    """Detects framework and infra files."""
+    detections = []
+    checks = {
+        "Docker": ["Dockerfile", "docker-compose.yml", ".dockerignore"],
+        "Kubernetes": ["k8s/", "deployment.yaml", "helm/", "Chart.yaml"],
+        "CI/CD": [".github/workflows/", ".gitlab-ci.yml", "Jenkinsfile", "azure-pipelines.yml"],
+        "Tests": ["test_", "_test.py", ".spec.js", ".test.js", "tests/"],
+        "Documentation": ["docs/", "mkdocs.yml", "sphinx/", "readthedocs.yaml"],
+        "Config": [".env.example", "config.yaml", "settings.py"]
+    }
+    
+    for tech, keys in checks.items():
+        for key in keys:
+            if any(key in f for f in files_dict):
+                detections.append(tech)
+                break
+    return detections
+
+def count_entities(files_dict):
+    """Counts total classes, functions, and imports."""
+    total = {"classes": 0, "functions": 0, "imports": 0}
+    for name, content in files_dict.items():
+        if not name.endswith(('.py', '.js', '.ts')): continue
+        total['classes'] += len(re.findall(r'class\s+([A-Za-z0-9_]+)', content))
+        total['functions'] += len(re.findall(r'def\s+([A-Za-z0-9_]+)', content))
+        total['imports'] += len(re.findall(r'^(?:import|from)\s+', content, re.MULTILINE))
+    return total
+
+def extract_python_function_code(content, func_name):
+    """
+    Attempts to extract a specific function's code from Python content.
+    Uses indentation logic to capture the full block.
+    """
+    lines = content.splitlines()
+    code_lines = []
+    recording = False
+    base_indent = None
+    
+    for line in lines:
+      
+        if re.match(rf"^\s*def\s+{re.escape(func_name)}\s*\(", line):
+            recording = True
+         
+            base_indent = len(line) - len(line.lstrip())
+            code_lines.append(line)
+            continue
+            
+        if recording:
+          
+            if not line.strip():
+                code_lines.append(line)
+                continue
+                
+            current_indent = len(line) - len(line.lstrip())
+            
+   
+            if current_indent <= base_indent:
+                break
+            
+            code_lines.append(line)
+            
+    return "\n".join(code_lines)
+
+
+
+
+def get_zhipu_client():
+    if not AI_AVAILABLE:
+        return None
+    
+   
+    api_key = os.environ.get("ZHIPUAI_API_KEY")
+    
+    if not api_key:
+        return None
+        
+    return ZhipuAI(api_key=api_key)
+
+def ai_analyze_architecture(client, files_dict):
+    """Generates a brief summary of the architecture using Rikai (GLM)."""
+    if not client:
+        return "⚠️ AI Analysis Failed: API Key not found."
+    
+    try:
+     
+        tree = build_full_tree(files_dict)
+     
+        if len(tree) > 3000:
+            tree = tree[:3000] + "\n... (truncated)"
+            
+ 
+        readme_content = ""
+        for fname in files_dict:
+            if 'readme' in fname.lower():
+                readme_content = files_dict[fname][:1000] 
+                break
+        
+   
+        prompt = f"""
+        You are Rikai, an AI code architect. Analyze the following repository structure and README snippet.
+        
+        File Tree:
+        {tree}
+        
+        README Snippet:
+        {readme_content}
+        
+        Task:
+        1. Identify the architectural pattern (e.g., MVC, Microservices, Library, CLI Tool).
+        2. Summarize the purpose of this project in 2 sentences.
+        3. Identify the likely entry point file.
+        """
+        
+
+        response = client.chat.completions.create(
+            model="GLM-4.6V-Flash", 
+            messages=[
+                {"role": "system", "content": "You are Rikai, a senior software architect providing concise code reviews."},
+                {"role": "user", "content": prompt}
+            ],
+        )
+        return response.choices[0].message.content
+        
+    except Exception as e:
+        return "We’re sorry. Something went wrong during the AI analysis. This may be due to a temporary server issue or high traffic or the repository might be too large. Please try again later."
+
+def ai_explain_code(client, code_snippet, func_name):
+    """Explains a specific function using Rikai (GLM)."""
+    if not client:
+        return "⚠️ AI Explanation Failed: API Key not found."
+    
+    try:
+        prompt = f"""
+        You are Rikai, an AI coding assistant. Explain the following Python function named '{func_name}'.
+        Focus on:
+        1. Inputs and Outputs.
+        2. Core logic side effects.
+        3. Potential edge cases or bugs.
+        
+        Code:
+        ```
+        {code_snippet}
+        ```
+        """
+        
+        response = client.chat.completions.create(
+            model="GLM-4.6V-Flash",
+            messages=[
+                {"role": "system", "content": "You are a coding assistant. Be concise and accurate."},
+                {"role": "user", "content": prompt}
+            ],
+        )
+        return response.choices[0].message.content
+        
+    except Exception as e:
+        return "Unfortunately, an error occurred while explaining the code. The AI model might be temporarily unavailable or your API plan might have limitations."
+
+
 
 
 def process_uploaded_files(uploaded_files):
@@ -720,11 +980,18 @@ def process_github_url(url):
         progress_bar.progress(20, text="📡 Fetching commit history...")
         commits_r = requests.get(f"{api_base}/commits?per_page=100")
         commit_dates = []
+
+        repo_meta['commit_datetimes'] = [] 
+        
         if commits_r.status_code == 200:
             for c in commits_r.json():
                 try:
                     date_str = c['commit']['author']['date']
-                    d = datetime.strptime(date_str, "%Y-%m-%dT%H:%M:%SZ").date()
+            
+                    dt = datetime.strptime(date_str, "%Y-%m-%dT%H:%M:%SZ")
+                    repo_meta['commit_datetimes'].append(dt)
+                    
+                    d = dt.date()
                     commit_dates.append(d)
                 except: pass
             repo_meta['commit_dates'] = commit_dates
@@ -881,6 +1148,8 @@ def process_gitlab_url(url):
         progress_bar.progress(20, text="📡 Fetching commit history...")
         commits_r = requests.get(f"{api_base}/repository/commits?per_page=100")
         commit_dates = []
+        repo_meta['commit_datetimes'] = []
+        
         if commits_r.status_code == 200:
             for c in commits_r.json():
                 try:
@@ -888,6 +1157,10 @@ def process_gitlab_url(url):
     
                     d = datetime.fromisoformat(date_str.replace('Z', '+00:00')).date()
                     commit_dates.append(d)
+                    
+                    
+                    dt = datetime.fromisoformat(date_str.replace('Z', '+00:00'))
+                    repo_meta['commit_datetimes'].append(dt)
                 except: pass
             repo_meta['commit_dates'] = commit_dates
             
@@ -1020,17 +1293,13 @@ if logo_data:
 
 st.markdown("""
 <h1 style='text-align: center; margin-bottom: 0;'>
-    Rikai<span style='color: #d3a0eb;'>Code</span>
+    Rikai<span style='color: #d3a0eb;'>Code.</span>
 </h1>
 <p style='text-align: center; font-size: 1.2rem; color: #a0a0a0; margin-bottom: 30px;'>
     Advanced Repository Flattener, Context Generator & Intelligent Grader
+            
 </p>
 """, unsafe_allow_html=True)
-
-
-
-
-
 
 
 st.markdown("### 🛠️ Input Source")
@@ -1074,7 +1343,7 @@ elif input_method == "🌐 GitHub Repository URL":
             st.session_state.pr_stats = {}
             gc.collect()
             
-            with st.spinner("Loading large repository… Please wait while the architecture loads. ⏳"):
+            with st.spinner("Loading Repository… Please wait while the architecture loads. ⏳"):
                 files, meta, pr_stats = process_github_url(url)
                 st.session_state.files_data = files
                 st.session_state.repo_meta = meta
@@ -1122,7 +1391,7 @@ if st.session_state.files_data:
         c4.metric("💻 Language", repo_meta.get('language', 'N/A'), help="The primary programming language used in the repository.")
         
     
-        st.markdown("#### ~ Derived Metrics")
+        st.markdown("####  Derived Metrics")
         dm1, dm2, dm3, dm4 = st.columns(4)
         
         
@@ -1142,7 +1411,7 @@ if st.session_state.files_data:
         dm4.metric("🔄 MR Merge Rate", f"{merge_rate:.0%}", help="Percentage of closed MRs/PRs that were merged. High rate = healthy contribution flow.")
 
 
-        st.markdown("#### ~ Merge/Pull Request Deep Dive")
+        st.markdown("####  Merge/Pull Request Deep Dive")
         pc1, pc2, pc3, pc4 = st.columns(4)
         pc1.metric("Open MRs", pr_stats.get('open', 'N/A'), help="Requests currently open and awaiting review or merge.")
         pc2.metric("Merged MRs", pr_stats.get('merged', 'N/A'), help="Requests that have been successfully merged.")
@@ -1150,8 +1419,38 @@ if st.session_state.files_data:
         pc4.metric("📖 Total MRs", pr_stats.get('total_prs', 'N/A'), help="Total number of Merge/Pull Requests.")
         
         st.markdown("---")
+        
+
+        if 'commit_datetimes' in repo_meta and repo_meta['commit_datetimes']:
+            st.markdown("####  ~ Commit Activity Heatmap (Time of Day)")
+            
+
+            heatmap_data = [[0] * 24 for _ in range(7)] 
+            days_map = {0: "Mon", 1: "Tue", 2: "Wed", 3: "Thu", 4: "Fri", 5: "Sat", 6: "Sun"}
+            
+            for dt in repo_meta['commit_datetimes']:
+       
+                day_of_week = dt.weekday()
+                hour = dt.hour
+                heatmap_data[day_of_week][hour] += 1
+                
+            fig_heatmap = go.Figure(data=go.Heatmap(
+                z=heatmap_data,
+                x=[f"{h}:00" for h in range(24)],
+                y=list(days_map.values()),
+                colorscale='Viridis'
+            ))
+            fig_heatmap.update_layout(
+                paper_bgcolor='#171717', plot_bgcolor='#171717', 
+                font_color='#ededed', 
+                xaxis_title="Hour of Day (UTC)",
+                yaxis_title="Day of Week",
+                height=300
+            )
+            st.plotly_chart(fig_heatmap, width="stretch")
+            
         if 'commit_dates' in repo_meta and repo_meta['commit_dates']:
-            st.markdown("#### ~ Recent Commit Activity")
+            st.markdown("#### ~ Recent Commit Frequency")
             df_commits = pd.DataFrame(repo_meta['commit_dates'], columns=['date'])
             df_commits['count'] = 1
             df_commits = df_commits.groupby('date').sum().reset_index()
@@ -1225,14 +1524,24 @@ if st.session_state.files_data:
         m4.metric("Est. Tokens", f"{token_est:,}", help="Approximation of total tokens (1 token ≈ 4 chars). Useful for LLM context limits.")
         m5.metric("Est. Size", f"{total_size/1024:.1f} KB", help="Total size of the concatenated text content in Kilobytes.")
 
+
+    
+
+    st.markdown("---")
+    st.markdown("### ~ Code Frame")
+
+    entity_counts = count_entities(files_data)
+
+    ec1, ec2, ec3 = st.columns(3)
+    ec1.metric(" Total Imports", entity_counts['imports'], help="Total import statements found in Python/JS files.")
+    ec2.metric(" Total Classes", entity_counts['classes'], help="Total class definitions found.")
+    ec3.metric(" Total Functions", entity_counts['functions'], help="Total function definitions found.")
+
     
     is_huge_repo = total_lines > MAX_LINES_INTERACTIVE_PREVIEW
     if is_huge_repo:
         st.warning(f"⚠️ **Large Repository Detected ({total_lines:,} lines).** Interactive preview disabled to prevent crash.")
 
-
-    st.markdown("---")
-    st.markdown("### ~ Code Frame")
 
 
     st.markdown("#### Detected Dependencies")
@@ -1243,7 +1552,41 @@ if st.session_state.files_data:
             st.markdown(deps_html, unsafe_allow_html=True)
         else:
             st.info("No external dependencies found in common files.")
-    
+            
+
+    st.markdown("#### Infrastructure & Tooling")
+    with st.expander("View Detected Stack", expanded=False):
+        infra = detect_infrastructure(files_data)
+        if infra:
+            st.markdown("Detected components:")
+            components_html = " ".join([f"<span class='dep-tag'>{comp}</span>" for comp in infra])
+            st.markdown(components_html, unsafe_allow_html=True)
+        else:
+            st.info("No standard infrastructure files (Docker, K8s, CI) detected.")
+
+
+    st.markdown("#### 🔒 Security Heuristics")
+    with st.expander("View Security Scan Results", expanded=False):
+        with st.spinner("Scanning for potential secrets..."):
+            security_issues = scan_security_issues(files_data)
+        
+        if security_issues:
+            st.warning(f"Found {len(security_issues)} potential security concerns:")
+            for issue in security_issues:
+                st.markdown(f"""
+                <div class="security-alert">
+                    <strong>File:</strong> {issue['file']}<br>
+                    <strong>Issue:</strong> {issue['type']}<br>
+                    <strong>Occurrences:</strong> {issue['count']}<br>
+                    <strong>Lines:</strong> {issue['lines']}
+                </div>
+                """, unsafe_allow_html=True)
+        else:
+            st.success("No hardcoded secrets or API keys detected by heuristics.")
+            
+
+
+
     st.markdown("####  Code Structure (Classes/Funcs)")
     with st.expander("View Structure", expanded=False):
         structure = extract_code_structure(files_data)
@@ -1259,6 +1602,62 @@ if st.session_state.files_data:
                 st.markdown("---")
         else:
             st.info("No structure detected or files too large.")
+
+
+
+    st.markdown("---")
+    st.markdown("### 🤖 Rikai AI Analysis")
+    
+    client = get_zhipu_client()
+    
+    if not AI_AVAILABLE:
+        st.error("⚠️ AI library not found. Please check equirements.txt.")
+    elif not client:
+        st.warning("⚠️ API KEY not found. AI features are disabled.")
+        st.caption("IF running locally, enable Rikai AI by adding your API Key to a `.env` file")
+    else:
+
+        with st.expander("- Architecture Overview by Rikai", expanded=False):
+            if st.button("Analyze Architecture", key="btn_arch_ai"):
+                with st.spinner("Rikai is analyzing the repository structure... This may take time..."):
+                    analysis = ai_analyze_architecture(client, files_data)
+         
+                    html_analysis = markdown.markdown(analysis)
+                    st.markdown(f'<div class="ai-response-box">{html_analysis}</div>', unsafe_allow_html=True)
+
+
+        with st.expander("- Explain Python Functions with Rikai", expanded=False):
+            st.write("Select a Python function to get an explanation.")
+            
+          
+            structure = extract_code_structure(files_data)
+            all_funcs = []
+            for fname, data in structure.items():
+                for func in data['functions']:
+                    all_funcs.append(f"{fname}::{func}")
+            
+            if all_funcs:
+                selected_func_path = st.selectbox("Select Function", all_funcs, key="sel_func_ai")
+                
+                if st.button("Explain Function", key="btn_func_ai"):
+                    if "::" in selected_func_path:
+                        fname, func_name = selected_func_path.split("::")
+                        content = files_data.get(fname, "")
+                        
+                        if content:
+                            with st.spinner(f"Rikai is explaining {func_name}..."):
+                                
+                                func_code = extract_python_function_code(content, func_name)
+                                
+                                if func_code:
+                                    explanation = ai_explain_code(client, func_code, func_name)
+                                 
+                                    html_explanation = markdown.markdown(explanation)
+                                    st.markdown(f'<div class="ai-response-box">{html_explanation}</div>', unsafe_allow_html=True)
+                                else:
+                                    st.warning("Could not extract function code for analysis.")
+            else:
+                st.info("No Python functions found to explain.")
 
 
     st.markdown("---")
@@ -1327,10 +1726,12 @@ if st.session_state.files_data:
             icon = "🐍" if ext == 'py' else "📜"
             lines_count = len(content.splitlines())
             
-           
+            header = f"{icon} **{filename}** ({lines_count} lines)"
+            
+   
             single_file_data = content.encode('utf-8')
             
-            with st.expander(f"{icon} **{filename}** ({lines_count} lines)"):
+            with st.expander(header):
                 c_prev, c_dl = st.columns([4, 1])
                 with c_prev:
                     st.code(content, language='python' if ext=='py' else 'javascript')

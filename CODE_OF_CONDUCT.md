@@ -1,8 +1,8 @@
-# Code of Conduct for ReviewAid
+# Code of Conduct for RikaiCode
 
 ## Our Pledge
 
-In the interest of fostering an open, inclusive, and safe environment, we as contributors and maintainers of **ReviewAid** pledge to respect all people who engage with our project, including users, contributors, and collaborators.
+In the interest of fostering an open, inclusive, and safe environment, we as contributors and maintainers of **RikaiCode** pledge to respect all people who engage with our project, including users, contributors, and collaborators.
 
 We commit to creating a community where everyone feels welcome and supported, free from harassment or discrimination.
 
@@ -33,7 +33,7 @@ Reports will be handled confidentially and respectfully.
 
 ## Enforcement
 
-Maintainers of ReviewAid will review reports and respond appropriately, which may include:
+Maintainers of RikaiCode will review reports and respond appropriately, which may include:
 
 - Removal of offensive content
 - Temporary or permanent exclusion from the project
@@ -43,7 +43,7 @@ Our goal is always to maintain a professional, safe, and welcoming environment f
 
 ## Scope
 
-This Code of Conduct applies to all interactions involving **ReviewAid**, including:
+This Code of Conduct applies to all interactions involving **RikaiCode**, including:
 
 - GitHub issues, pull requests, and discussions
 - Zenodo submissions and associated feedback
@@ -51,7 +51,7 @@ This Code of Conduct applies to all interactions involving **ReviewAid**, includ
 
 ## Acknowledgment
 
-By participating in ReviewAid—whether using the tool, contributing code, validating data, or providing feedback—you agree to follow this Code of Conduct.
+By participating in RikaiCode - whether using the tool, contributing code, validating data, or providing feedback—you agree to follow this Code of Conduct.
 
 ---
 

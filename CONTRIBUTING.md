@@ -1,30 +1,30 @@
 
-# Contributing to ReviewAid
+# Contributing to RikaiCode
 
-Thank you for your interest in contributing to **ReviewAid**!
-This project is an open-source AI-powered tool designed to assist researchers in **full-text screening and data extraction for systematic reviews and evidence synthesis**.
+Thank you for your interest in contributing to **RikaiCode**!
+This project is an open-source tool designed to transform complex codebases into **AI-ready context, intelligent grades, and actionable insights**.
 
-Contributions help improve reliability, usability, and transparency — all critical for research tools.
+Contributions help improve code analysis accuracy, grading reliability, and user experience for developers and researchers.
 
 ---
 
-## Ways to Contribute
+## 🛠️ Ways to Contribute
 
 You can contribute in the following ways:
 
-* 🛠️ Fix bugs or improve existing features
-* 🚀 Add new features or enhancements
-* 📄 Improve documentation or examples
-* 🔗 Fix broken links or UI issues
-* 🧪 Improve parsing, extraction, or confidence logic
-* ⚡ Optimize performance (especially batch processing / LLM calls)
+* Fix bugs in GitHub/GitLab fetching or file parsing
+* Add new features (e.g., new export formats, visualizations)
+* Improve documentation or usage examples
+* Fix broken links or UI glitches
+* Enhance grading algorithms or security heuristics
+* Optimize performance (especially for large repositories)
 
 ---
 
 ## Before You Start
 
 * Check existing **Issues** to avoid duplicate work
-* For major changes, open an issue first to discuss your idea
+* For major changes (e.g., changing the grading logic), open an issue first to discuss your idea
 * Keep changes focused and minimal
 
 ---
@@ -35,8 +35,8 @@ You can contribute in the following ways:
 2. Clone your fork:
 
 ```bash
-git clone https://github.com/aurumz-rgb/ReviewAid.git
-cd ReviewAid
+git clone https://github.com/aurumz-rgb/RikaiCode.git
+cd RikaiCode
 ```
 
 3. Create a virtual environment:
@@ -65,13 +65,14 @@ streamlit run app.py
 
 When contributing:
 
-* Keep logic modular (separate UI, parsing, and AI logic)
-* Maintain the **robust parsing pipeline** (fallback-safe design)
+* Keep logic modular (separate UI, repository processing, and grading logic)
+* Maintain the **robust parsing pipeline** (handle encoding errors gracefully)
 * Avoid breaking:
 
-  * Screening workflow
-  * Extraction workflow
-  * Confidence scoring system
+  * Repository fetching (GitHub/GitLab)
+  * Static analysis & Grading system
+  * Security scanning heuristics
+  * Export functionality
 
 ---
 
@@ -80,40 +81,34 @@ When contributing:
 * Use clear, readable Python code
 * Follow **PEP8** conventions
 * Write meaningful variable and function names
-* Add comments where logic is complex (especially parsing / AI handling)
+* Add comments where logic is complex (especially grading formulas or regex patterns)
 
 ---
 
 ## AI & API Contributions
 
-Since ReviewAid relies on LLMs:
+Since RikaiCode integrates AI for analysis:
 
 * Ensure compatibility with:
-
-  * OpenAI
-  * Anthropic
-  * Cohere
-  * DeepSeek
-  * Ollama (local)
+  * ZhipuAI (Current default)
+  * *(Feel free to add support for OpenAI, Anthropic, Ollama, etc.)*
 
 * Do not:
-
   * Hardcode API keys
-  * Store sensitive data
+  * Store sensitive user code data
 
 * Prefer:
-
-  * Config-driven model selection
-  * Graceful fallbacks
+  * Config-driven model selection via `.env`
+  * Graceful fallbacks if API limits are reached
 
 ---
 
 ## UI / Streamlit Contributions
 
-* Keep UI simple and research-focused
-* Avoid clutter — prioritize usability
-* Ensure a clear workflow (Upload → Process → Output)
-* Provide helpful logs or feedback to users
+* Keep UI clean, dark-themed, and developer-focused
+* Avoid clutter — prioritize actionable insights
+* Ensure a clear workflow (Input → Analysis → Export)
+* Provide helpful progress bars or logs during heavy processing
 
 ---
 
@@ -185,19 +180,5 @@ If you encounter problems, open an issue and include:
 * Steps to reproduce
 * Expected vs actual behavior
 * Logs or screenshots (if applicable)
-* Environment details (OS, Python version, model used)
+* Environment details (OS, Python version, Repository size analyzed)
 
----
-
-## Important Notes
-
-* ReviewAid is an **assistive tool**, not a replacement for manual research
-* Always validate outputs, especially low-confidence results
-* Do not expose sensitive or private data
-
----
-
-## Final Note
-
-ReviewAid is built **by a researcher, for researchers**.
-Your contributions directly improve the quality and efficiency of evidence synthesis workflows 🚀
