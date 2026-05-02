@@ -32,8 +32,7 @@ st.markdown("""
 <style>
 
     html, body, [class*="css"] {
-        background-color: #171717 !important;
-        color: #ededed !important;
+
         font-family: 'Inter', sans-serif;
     }
 
@@ -56,13 +55,13 @@ st.markdown("""
         border-radius: 8px !important;
         padding: 10px 24px !important;
         font-weight: bold !important;
-        transition: all 0.3s ease !important;
+ 
         width: 100%;
     }
     .stButton > button:hover {
         background-color: #b589c8 !important;
         transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(211, 160, 235, 0.3);
+       
     }
 
     
@@ -85,18 +84,21 @@ st.markdown("""
         background-color: #1e1e1e !important; border: 1px solid #333 !important;
         border-radius: 10px; padding: 15px !important;
     }
-    [data-testid="stMetricLabel"] { color: #a0a0a0 !important; }
+    [data-testid="stMetricLabel"] { 
+        color: #a0a0a0 !important; 
+        font-size: 1.1rem !important; 
+    }
     [data-testid="stMetricValue"] { color: #d3a0eb !important; font-size: 1.8rem !important; }
 
 
     .grade-box {
         background-color: #1e1e1e;
-        border: 2px solid #d3a0eb;
+        border: 2px solid #7c5e8a;
         border-radius: 15px;
         padding: 20px;
         text-align: center;
         margin-bottom: 20px;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+
     }
     .grade-letter {
         font-size: 4rem;
@@ -115,9 +117,9 @@ st.markdown("""
 
 
     .arch-box {
-        background-color: #1e1e1e;
-        border: 1px solid #333;
-        border-left: 5px solid #d3a0eb;
+       
+        border: 0.5px solid #333;
+       
         padding: 20px;
         border-radius: 8px;
         font-family: 'Courier New', monospace;
@@ -133,7 +135,15 @@ st.markdown("""
         padding: 15px 20px; display: flex; justify-content: space-between;
         align-items: center; z-index: 9999; font-size: 14px;
     }
-    .footer-link { color: #d3a0eb !important; text-decoration: none; font-weight: bold; }
+    .footer-link {
+        color: #d3a0eb !important;
+        text-decoration: none !important;
+    }
+
+    .footer-link:hover {
+        color: #9d76ad !important; 
+
+    }
 
 
     @keyframes float {
@@ -149,8 +159,8 @@ st.markdown("""
     
 
     .info-box {
-        background-color: rgba(211, 160, 235, 0.1);
-        border-left: 4px solid #d3a0eb;
+        background-color: rgba(211, 160, 235, 0.05);
+
         padding: 15px;
         border-radius: 5px;
         margin-bottom: 20px;
@@ -161,7 +171,7 @@ st.markdown("""
     .dep-tag {
         display: inline-block;
         background-color: #252525;
-        color: #d3a0eb;
+
         padding: 4px 8px;
         border-radius: 4px;
         margin: 2px;
@@ -645,7 +655,7 @@ def process_github_url(url):
                     pct = 80 + int((processed_count / total_files) * 20)
                     progress_bar.progress(pct, text=f"⚙️ Processing {processed_count}/{total_files}")
         
-        progress_bar.progress(100, text="✅ Done!")
+        progress_bar.progress(100, text="✔️ Done!")
         time.sleep(0.5)
         progress_bar.empty()
         
@@ -679,6 +689,9 @@ st.markdown("""
     Advanced Repository Flattener, Context Generator & Intelligent Grader
 </p>
 """, unsafe_allow_html=True)
+
+
+
 
 
 
@@ -725,20 +738,20 @@ elif input_method == "🌐 GitHub Repository URL":
             st.session_state.pr_stats = {}
             gc.collect()
             
-            with st.spinner("Processing..."):
+            with st.spinner("Loading large repository… Please wait while the architecture loads. ⏳"):
                 files, meta, pr_stats = process_github_url(url)
                 st.session_state.files_data = files
                 st.session_state.repo_meta = meta
                 st.session_state.pr_stats = pr_stats
 
+
+
 st.markdown("""
 <div class="info-box">
-    <br><strong>Note:</strong> Large repositories may take time to process. Please wait for the architecture to load.
-    <br><strong>Local Files:</strong> If uploading files/ZIPs manually, GitHub stats and grading will be estimated based on static analysis only.
+    <p><strong>Note:</strong> Large repositories may take time to process. Please wait for the architecture to load.</p>
+    <p><strong>Local Files:</strong> If uploading files/ZIPs manually, GitHub stats and grading will be estimated based on static analysis only.</p>
 </div>
 """, unsafe_allow_html=True)
-
-
 
 
 if st.session_state.files_data:
@@ -752,10 +765,10 @@ if st.session_state.files_data:
     if repo_meta:
         st.markdown("### 🌐 Repository Insights")
         c1, c2, c3, c4 = st.columns(4)
-        c1.metric("⭐ Stars", repo_meta.get('stars', 0))
-        c2.metric("🍴 Forks", repo_meta.get('forks', 0))
-        c3.metric("👀 Watchers", repo_meta.get('watchers', 0))
-        c4.metric("💻 Language", repo_meta.get('language', 'N/A'))
+        c1.metric("⭐ Stars", repo_meta.get('stars', 0), help="Total number of stars the repository has received.")
+        c2.metric("🍴 Forks", repo_meta.get('forks', 0), help="Total number of forks created from this repository.")
+        c3.metric("👀 Watchers", repo_meta.get('watchers', 0), help="Number of users watching the repository for updates.")
+        c4.metric("💻 Language", repo_meta.get('language', 'N/A'), help="The primary programming language used in the repository.")
         
     
         st.markdown("#### ~ Derived Metrics")
@@ -780,12 +793,12 @@ if st.session_state.files_data:
 
         st.markdown("#### ~ Pull Request Deep Dive")
         pc1, pc2, pc3, pc4 = st.columns(4)
-        pc1.metric("Open PRs", pr_stats.get('open', 'N/A'))
-        pc2.metric("Merged PRs", pr_stats.get('merged', 'N/A'))
-        pc3.metric("Closed (Rejected)", pr_stats.get('closed_rejected', 'N/A'))
-        pc4.metric("Total PRs", pr_stats.get('total_prs', 'N/A'))
+        pc1.metric("Open PRs", pr_stats.get('open', 'N/A'), help="Pull Requests currently open and awaiting review or merge.")
+        pc2.metric("Merged PRs", pr_stats.get('merged', 'N/A'), help="Pull Requests that have been successfully merged into the codebase.")
+        pc3.metric("Closed (Rejected)", pr_stats.get('closed_rejected', 'N/A'), help="Pull Requests that were closed without being merged.")
+        pc4.metric("📖 Total PRs", pr_stats.get('total_prs', 'N/A'), help="Total number of Pull Requests created in the repository.")
         
-     
+        st.markdown("---")
         if 'commit_dates' in repo_meta and repo_meta['commit_dates']:
             st.markdown("#### ~ Recent Commit Activity")
             df_commits = pd.DataFrame(repo_meta['commit_dates'], columns=['date'])
@@ -817,7 +830,7 @@ if st.session_state.files_data:
         with col_grade:
             st.markdown(f"""
             <div class="grade-box">
-                <div style="font-size: 1.2rem; color: #ededed;">Repo Rank</div>
+                <div style="font-size: 1.2rem; color: #ededed;">Repository Rank</div>
                 <div class="grade-letter">{grade}</div>
                 <div style="color: #a0a0a0;">{grade_desc}</div>
                 <div class="grade-reason">
@@ -849,7 +862,7 @@ if st.session_state.files_data:
             """, unsafe_allow_html=True)
 
     with col_stats:
-        st.markdown("### ~ Code Statistics")
+        st.markdown("### ⌨️ Code Statistics")
         m1, m2, m3, m4, m5 = st.columns(5)
         m1.metric("Total Files", len(files_data))
         m2.metric("Total Lines", f"{total_lines:,}")
@@ -928,7 +941,7 @@ if st.session_state.files_data:
 
 
     st.markdown("---")
-    st.markdown("### Project Architecture")
+    st.markdown("### ~ Project Architecture")
     arch_str = build_full_tree(files_data)
     
     if len(arch_str.splitlines()) > 30:
@@ -1006,7 +1019,7 @@ gc.collect()
 
 st.markdown("""
 <div class="footer-custom">
-    <div>Made with 🤍  by <strong>Aurumz.</strong></div>
-    <div><a href="https://github.com/aurumz-rgb" target="_blank" class="footer-link">Github Repository</a></div>
+    <div>Made with 🤍  by <strong>Aurumz</strong></div>
+    <div><a href="https://github.com/aurumz-rgb/RikaiCode" target="_blank" class="footer-link">© 2026 aurumz-rgb — AGPL 3.0 License</a></div>
 </div>
 """, unsafe_allow_html=True)
