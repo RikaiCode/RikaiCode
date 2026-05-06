@@ -1,0 +1,56 @@
+{
+    "title": "RikaiCode: Advanced Repository Flattener, Context Generator & Intelligent Grader",
+    "description": "RikaiCode is a sophisticated, browser-based tool designed to turn complex codebases into structured, actionable data. It flattens repositories for LLM context, assigns intelligent quality grades (A++ to C), scans for security vulnerabilities, and provides AI-powered architectural insights using GLM-4.7-Flash.",
+    "creators": [
+        {
+            "name": "Sahu, Vihaan",
+            "orcid": "0009-0008-5790-1818"
+        }
+    ],
+    "upload_type": "software",
+    "publication_type": "software",
+    "license": "AGPL-3.0",
+    "version": "1.0.0",
+    "language": "eng",
+    "access_right": "open",
+    "keywords": [
+        "python",
+        "streamlit",
+        "llm",
+        "code-analysis",
+        "static-analysis",
+        "large-language-models",
+        "code-quality",
+        "developer-tools",
+        "git",
+        "github",
+        "gitlab",
+        "code-review",
+        "artificial-intelligence",
+        "repository-analysis",
+        "context-generation",
+        "AGPL"
+    ],
+    "notes": "RikaiCode allows users to analyze public repositories (GitHub/GitLab) or local files. It features a unified grading system based on popularity, activity, maintenance, and static code quality. It includes security heuristics to detect hardcoded secrets and integrates AI for architectural summaries and code explanations. It supports one-click export to multiple formats (TXT, JSON, PDF, DOCX) for use as LLM context.",
+    "related_identifiers": [
+        {
+            "identifier": "https://github.com/aurumz-rgb/RikaiCode",
+            "relation": "isSupplementTo",
+            "scheme": "url"
+        }
+    ],
+    "subjects": [
+        {
+            "term": "Software Engineering"
+        },
+        {
+            "term": "Computer Science"
+        },
+        {
+            "term": "Artificial Intelligence"
+        },
+        {
+            "term": "Programming"
+        }
+    ]
+}
