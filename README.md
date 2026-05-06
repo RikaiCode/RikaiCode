@@ -9,6 +9,7 @@ RikaiCode is a sophisticated, browser-based tool designed to turn complex codeba
 ![Python](https://img.shields.io/badge/Python-3.10+%2B-brightgreen)
 ![Streamlit](https://img.shields.io/badge/Powered%20by-Streamlit-orange)
 [![Open Source](https://badges.frapsoft.com/os/v1/open-source.svg?v=103)](https://github.com/ellerbrock/open-source-badges/)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20059448.svg?style=for-the-badge)](https://doi.org/10.5281/zenodo.20059448)
 
 ---
 
@@ -154,7 +155,7 @@ RikaiCode is versatile and built for developers, security researchers, and data 
 RikaiCode offers flexible deployment options to suit your workflow.
 
 ### ☁️ Run Online (Streamlit Cloud)
-You can directly run the already hosted streqamlit **online** at: https://rikaicode.streamlit.app
+You can directly run the already hosted streamlit **Online** at: https://rikaicode.streamlit.app
 *   **Note:** Online deployments may have timeout limits for very large repositories.
 
 ### 💻 Run Locally (Offline)

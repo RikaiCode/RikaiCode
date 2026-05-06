@@ -1,0 +1,20 @@
+cff-version: 1.2.0
+title: "RikaiCode: Advanced Repository Flattener, Context Generator & Intelligent Grader"
+version: "1.0.0"
+doi: "10.5281/zenodo.20059448"
+date-released: 2026-5-7
+authors:
+  - family-names: "Sahu"
+    given-names: "Vihaan"
+preferred-citation:
+  type: software
+  authors:
+    - family-names: "Sahu"
+      given-names: "Vihaan"
+  title: "RikaiCode: Advanced Repository Flattener, Context Generator & Intelligent Grader (v1.0.0)"
+  version: "1.0.0"
+  doi: "10.5281/zenodo.20059448"
+  year: 2026
+  url: "https://doi.org/10.5281/zenodo.20059448"
+  repository-code: "https://github.com/aurumz-rgb/RikaiCode"
+  license: "AGPL-3.0"
