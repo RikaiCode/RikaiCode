@@ -69,7 +69,7 @@ Export your entire flattened codebase into a single file for LLM context. Suppor
 
 *AI-generated architecture summary / code review and Repository code Flattener.* 
  ![RikaiCodeBanner111](screenshots/6.png)
- ![RikaiCodeBanner22](screenshots/7.png)|
+ ![RikaiCodeBanner22](screenshots/7.png)
 
 
 
@@ -154,8 +154,7 @@ RikaiCode is versatile and built for developers, security researchers, and data 
 RikaiCode offers flexible deployment options to suit your workflow.
 
 ### ☁️ Run Online (Streamlit Cloud)
-You can deploy RikaiCode on Streamlit Community Cloud for quick, accessible analysis from anywhere.
-*   **Best for:** Small to medium repositories, quick checks, and shared usage.
+You can directly run the already hosted streqamlit **online** at: https://rikaicode.streamlit.app
 *   **Note:** Online deployments may have timeout limits for very large repositories.
 
 ### 💻 Run Locally (Offline)

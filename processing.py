@@ -208,7 +208,7 @@ def process_github_url(url):
         
     except Exception as e:
         progress_bar.empty()
-        st.error(f"Error: {str(e)}")
+        st.error("Please make sure the source url is correct.")
         
     return files_dict, repo_meta, pr_stats
 
@@ -417,6 +417,6 @@ def process_gitlab_url(url):
         
     except Exception as e:
         progress_bar.empty()
-        st.error(f"Error: {str(e)}")
+        st.error("Please make sure the source url is correct.")
         
     return files_dict, repo_meta, pr_stats
