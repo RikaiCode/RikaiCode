@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://aurumz-rgb.github.io/ReviewAid/sitemap.xml
+Sitemap: https://aurumz-rgb.github.io/RikaiCode/sitemap.xml

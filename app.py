@@ -1,37 +1,12 @@
 import streamlit as st
 import os
-import base64
-import io
-import zipfile
-import requests
+import gc
+import time
 import plotly.express as px
 import plotly.graph_objects as go
 import pandas as pd
-import time
-import re
-import json
-import math
-import gc
-import urllib.parse
 import markdown 
-from PIL import Image
-from docx import Document
-from fpdf import FPDF
-from datetime import datetime, timedelta
-from collections import Counter
-
-
-try:
-    from zai import ZaiClient
-    AI_AVAILABLE = True
-except ImportError:
-    AI_AVAILABLE = False
-
-try:
-    from dotenv import load_dotenv
-    load_dotenv()
-except ImportError:
-    pass 
+from datetime import datetime
 
 st.set_page_config(
     page_title="RikaiCode",
@@ -40,1245 +15,36 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
+from config import (
+    SKIP_EXTENSIONS, MAX_LINES_INTERACTIVE_PREVIEW, 
+    AI_AVAILABLE, apply_styles, load_logo, estimate_tokens
+)
 
-SKIP_EXTENSIONS = {'.pdf', '.rtf', '.docx', '.pdf', '.xlsx', '.csv'}
-LOGO_PATH = "assets/logo.png" if os.path.exists("assets/logo.png") else "logo.png"
 
-MAX_LINES_INTERACTIVE_PREVIEW = 50000
+from processing import (
+    process_uploaded_files, process_zip_file, 
+    process_github_url, process_gitlab_url
+)
 
 
-st.markdown("""
-<style>
+from analysis import (
+    get_file_stats, calculate_repo_quality_score, get_grade_from_score, 
+    analyze_static_quality, build_full_tree, scan_dependencies, 
+    extract_code_structure, scan_security_issues, scan_tech_debt,
+    detect_infrastructure, count_entities, extract_python_function_code,
+    get_zhipu_client, ai_analyze_architecture, ai_explain_code, 
+    ai_project_synopsis, ai_review_file, ai_onboarding_guide,
+    ai_complexity_analysis, ai_dependency_suggestions, ai_refactoring_ideas
+)
 
-    html, body, [class*="css"] {
 
-        font-family: 'Inter', sans-serif;
-    }
+from export import (
+    create_txt_content, export_html, export_docx, export_pdf, 
+    export_json, export_ai_response_docx, export_ai_response_pdf
+)
 
-    h1, h2, h3 { color: #ededed !important; font-weight: 700 !important; }
-    .main .block-container { padding-top: 2rem; padding-bottom: 5rem; }
-    .accent-text { color: #d3a0eb !important; }
 
-   
-    .stFileUploader {
-        border: 1px dashed #d3a0eb !important;
-        background-color: #1e1e1e !important;
-        border-radius: 10px; padding: 20px;
-    }
-    
-
-    .stButton > button {
-        background-color: #d3a0eb !important;
-        color: #171717 !important;
-        border: none !important;
-        border-radius: 8px !important;
-        padding: 10px 24px !important;
-        font-weight: bold !important;
- 
-        width: 100%;
-    }
-    .stButton > button:hover {
-        background-color: #b589c8 !important;
-        transform: translateY(-2px);
-       
-    }
-
-    
-    .streamlit-expanderHeader {
-        background-color: #1e1e1e !important;
-        color: #ededed !important;
-        border: 1px solid #333 !important;
-        border-radius: 8px !important;
-        font-weight: 600 !important;
-    }
-    .streamlit-expanderContent {
-        background-color: #1e1e1e !important;
-        border: 1px solid #333 !important;
-        border-top: none !important;
-        border-radius: 0 0 8px 8px !important;
-    }
-
-
-    [data-testid="stMetric"] {
-        background-color: #1e1e1e !important; border: 1px solid #333 !important;
-        border-radius: 10px; padding: 15px !important;
-    }
-    [data-testid="stMetricLabel"] { 
-        color: #a0a0a0 !important; 
-        font-size: 1.1rem !important; 
-    }
-    [data-testid="stMetricValue"] { color: #d3a0eb !important; font-size: 1.8rem !important; }
-
-
-    .grade-box {
-        background-color: #1e1e1e;
-        border: 2px solid #7c5e8a;
-        border-radius: 15px;
-        padding: 20px;
-        text-align: center;
-        margin-bottom: 20px;
-
-    }
-    .grade-letter {
-        font-size: 4rem;
-        font-weight: bold;
-        color: #d3a0eb;
-        line-height: 1;
-    }
-    .grade-reason {
-        text-align: left;
-        font-size: 0.9rem;
-        color: #a0a0a0;
-        margin-top: 10px;
-        border-top: 1px solid #333;
-        padding-top: 10px;
-    }
-
-
-    .arch-box {
-       
-        border: 0.5px solid #333;
-       
-        padding: 20px;
-        border-radius: 8px;
-        font-family: 'Courier New', monospace;
-        white-space: pre;
-        overflow-x: auto;
-        color: #ededed;
-    }
-
-
-    .footer-custom {
-        position: fixed; bottom: 0; left: 0; width: 100%;
-        background-color: #1e1e1e; border-top: 1px solid #333;
-        padding: 15px 20px; display: flex; justify-content: space-between;
-        align-items: center; z-index: 9999; font-size: 14px;
-    }
-    .footer-link {
-        color: #d3a0eb !important;
-        text-decoration: none !important;
-    }
-
-    .footer-link:hover {
-        color: #9d76ad !important; 
-
-    }
-
-
-    @keyframes float {
-        0% { transform: translateY(0px); } 50% { transform: translateY(-10px); } 100% { transform: translateY(0px); }
-    }
-    .logo-container { display: flex; justify-content: center; margin-bottom: 1px; }
-    .logo-img { width: 160px; }
-
-
-    .stTextInput > div > div > input, .stSelectbox > div > div > div {
-        background-color: #1e1e1e !important; color: #ededed !important; border: 1px solid #333 !important;
-    }
-    
-
-    .info-box {
-        background-color: rgba(211, 160, 235, 0.05);
-
-        padding: 15px;
-        border-radius: 5px;
-        margin-bottom: 20px;
-        color: #ededed;
-    }
-
-
-    .dep-tag {
-        display: inline-block;
-        background-color: #252525;
-
-        padding: 4px 8px;
-        border-radius: 4px;
-        margin: 2px;
-        font-size: 0.85rem;
-        border: 1px solid #333;
-    }
-    
-    .security-alert {
-        background-color: rgba(255, 75, 75, 0.1);
-        border-left: 4px solid #ff4b4b;
-        padding: 10px;
-        margin-bottom: 10px;
-        border-radius: 4px;
-    }
-
-
-    .ai-response-box {
-        background-color: #121212;
-        border: 1px solid #444;
-        border-radius: 8px;
-        padding: 15px;
-        margin-top: 10px;
-        color: #ededed;
-  
-    }
-    
-  
-    .ai-response-box h3 {
-        color: #d3a0eb !important;
-        margin-top: 1rem;
-        margin-bottom: 0.5rem;
-    }
-    
-    .ai-response-box strong {
-        color: #fff !important;
-    }
-
-    #MainMenu {visibility: hidden;} footer {visibility: hidden;}
-</style>
-""", unsafe_allow_html=True)
-
-
-
-def load_logo():
-
-    if os.path.exists("assets/logo.png"):
-        try:
-            img = Image.open("assets/logo.png")
-            buf = io.BytesIO()
-            img.save(buf, format="PNG")
-            data = base64.b64encode(buf.getvalue()).decode("utf-8")
-            return f"data:image/png;base64,{data}"
-        except: pass
-    elif os.path.exists("logo.png"):
-        try:
-            img = Image.open("logo.png")
-            buf = io.BytesIO()
-            img.save(buf, format="PNG")
-            data = base64.b64encode(buf.getvalue()).decode("utf-8")
-            return f"data:image/png;base64,{data}"
-        except: pass
-    return None
-
-def estimate_tokens(text):
-    return len(text) // 4
-
-def get_file_stats(files_dict):
-    ext_counts = {}
-    total_lines = 0
-    total_size = 0
-    for name, content in files_dict.items():
-        ext = name.split('.')[-1] if '.' in name else 'folder/other'
-        ext_counts[ext] = ext_counts.get(ext, 0) + 1
-        lines = len(content.splitlines())
-        total_lines += lines
-        total_size += len(content)
-    return ext_counts, total_lines, total_size
-
-def calculate_repo_quality_score(meta, commits, pr_stats):
-    """
-    Unified Grading Logic for GitHub/GitLab Metrics.
-    Returns (score, breakdown_dict)
-    """
-    score = 0
-    breakdown = {}
-    
-    # 1. Popularity (30 pts)
-    stars = meta.get('stars', 0)
-    forks = meta.get('forks', 0)
-    
-    # Stars Logic (20 pts)
-    if stars > 10000: star_pts = 20
-    elif stars > 1000: star_pts = 18
-    elif stars > 100: star_pts = 14
-    elif stars > 10: star_pts = 8
-    else: star_pts = 2
-    
-    # Fork Logic (10 pts) - Fork Ratio
-    fork_ratio = forks / stars if stars > 0 else 0
-    if fork_ratio > 0.2: fork_pts = 10
-    elif fork_ratio > 0.1: fork_pts = 7
-    else: fork_pts = 3
-    
-    popularity_score = star_pts + fork_pts
-    score += popularity_score
-    breakdown['Popularity'] = f"{popularity_score}/30 (Stars: {star_pts}, Fork Ratio: {fork_pts})"
-
-    # 2. Activity (25 pts)
-    last_commit_str = meta.get('pushed_at', None)
-    activity_score = 0
-    recency_pts = 0
-    if last_commit_str:
-        try:
-      
-            clean_date = last_commit_str.replace('Z', '+00:00')
-            last_date = datetime.fromisoformat(clean_date)
-      
-            now = datetime.now(last_date.tzinfo)
-            days_diff = (now - last_date).days
-            
-            if days_diff < 30: recency_pts = 15
-            elif days_diff < 180: recency_pts = 10
-            elif days_diff < 365: recency_pts = 5
-            else: recency_pts = 0
-            
-            activity_score += recency_pts
-        except: pass
-    
-    # Commit Frequency (10 pts)
-    freq_pts = 0
-    if len(commits) > 50: freq_pts = 10
-    elif len(commits) > 10: freq_pts = 7
-    else: freq_pts = 3
-    
-    activity_score += freq_pts
-    score += activity_score
-    breakdown['Activity'] = f"{activity_score}/25 (Recency: {recency_pts}, Freq: {freq_pts})"
-
-    # 3. Maintenance (20 pts)
-    # Issues Heuristic
-    open_issues = meta.get('open_issues', 0)
-    issue_ratio = open_issues / stars if stars > 0 else 0
-    
-    if issue_ratio < 0.05: maint_pts = 20
-    elif issue_ratio < 0.1: maint_pts = 15
-    elif issue_ratio < 0.2: maint_pts = 10
-    else: maint_pts = 5
-    
-    # Adjust based on PR Health
-    pr_merge_rate = pr_stats.get('merge_rate', 0)
-    if pr_merge_rate > 0.8: maint_pts += 5 # Bonus for healthy PRs
-    elif pr_merge_rate < 0.2 and pr_stats.get('total_prs', 0) > 10: maint_pts -= 5 # Penalty for ignored PRs
-    
-    score += maint_pts
-    breakdown['Maintenance'] = f"{maint_pts}/20 (Issue & PR Health)"
-
-    # 4. Community (15 pts)
-    watchers = meta.get('watchers', 0) 
-    if watchers > 1000: comm_pts = 15
-    elif watchers > 100: comm_pts = 10
-    elif watchers > 10: comm_pts = 5
-    else: comm_pts = 2
-    
-    score += comm_pts
-    breakdown['Community'] = f"{comm_pts}/15 (Watchers)"
-
-    # 5. Stability (10 pts)
-    if meta.get('archived', False): stab_pts = 0
-    else: stab_pts = 10
-    
-    score += stab_pts
-    breakdown['Stability'] = f"{stab_pts}/10 (Active Status)"
-
-    return score, breakdown
-
-def get_grade_from_score(score):
-    if score >= 95: return 'A++', "Exceptional quality, highly active, and massive community trust."
-    elif score >= 90: return 'A+', "Excellent project with strong metrics and maintenance."
-    elif score >= 80: return 'A', "Great project, reliable and well-maintained."
-    elif score >= 70: return 'B+', "Good project, but might lack in activity or popularity."
-    elif score >= 60: return 'B', "Fair quality, check specific metrics for details."
-    elif score >= 50: return 'C+', "Average project, potential maintenance or activity issues."
-    else: return 'C', "Low score, use with caution. May be inactive or unmaintained."
-
-def analyze_static_quality(files_dict, total_lines):
-    """
-    Advanced Static Grading Logic (Unified with GitHub system).
-    Returns (score, breakdown_dict)
-    """
-    score = 0
-    breakdown = {}
-    
-    # 1. Documentation (30 pts)
-    # README Check (10 pts)
-    has_readme = any('readme' in f.lower() for f in files_dict.keys())
-    readme_pts = 10 if has_readme else 0
-    
-    # Comment Ratio (20 pts)
-    total_comments = 0
-    for content in files_dict.values():
-
-        total_comments += len(re.findall(r'#.*|//.*|/\*.*?\*/', content, re.DOTALL))
-    
-    doc_ratio = total_comments / total_lines if total_lines > 0 else 0
-    if doc_ratio > 0.15: comment_pts = 20
-    elif doc_ratio > 0.05: comment_pts = 10
-    else: comment_pts = 0
-    
-    doc_score = readme_pts + comment_pts
-    score += doc_score
-    breakdown['Documentation'] = f"{doc_score}/30 (Readme: {readme_pts}, Comments: {comment_pts})"
-
-    # 2. Structure (30 pts)
-    # Modularity (Avg lines per file) - 15 pts
-    avg_lines = total_lines / len(files_dict) if files_dict else 0
-    if avg_lines < 150: mod_pts = 15
-    elif avg_lines < 300: mod_pts = 10
-    elif avg_lines < 600: mod_pts = 5
-    else: mod_pts = 0
-    
-    # Organization (Entry point & Folders) - 15 pts
-    has_entry = any('main' in f.lower() or 'app' in f.lower() or 'index' in f.lower() for f in files_dict.keys())
-    has_folders = any('/' in f for f in files_dict.keys())
-    org_pts = 0
-    if has_entry: org_pts += 10
-    if has_folders: org_pts += 5
-    
-    struct_score = mod_pts + org_pts
-    score += struct_score
-    breakdown['Structure'] = f"{struct_score}/30 (Modularity: {mod_pts}, Org: {org_pts})"
-
-    # 3. Best Practices (20 pts)
-    # Dependencies (15 pts)
-    has_deps = 'requirements.txt' in files_dict or 'package.json' in files_dict
-    dep_pts = 15 if has_deps else 0
-    
-    # Gitignore (5 pts)
-    has_gitignore = any('.gitignore' in f for f in files_dict.keys())
-    git_pts = 5 if has_gitignore else 0
-    
-    bp_score = dep_pts + git_pts
-    score += bp_score
-    breakdown['Best Practices'] = f"{bp_score}/20 (Deps: {dep_pts}, Gitignore: {git_pts})"
-
-    # 4. Scale (10 pts)
-    if total_lines > 1000: scale_pts = 10
-    elif total_lines > 200: scale_pts = 5
-    else: scale_pts = 2
-    
-    score += scale_pts
-    breakdown['Scale'] = f"{scale_pts}/10 (Lines: {total_lines})"
-
-    # 5. Stability (10 pts)
-    stab_pts = 0
-    if len(files_dict) >= 5: stab_pts = 10
-    elif len(files_dict) > 1: stab_pts = 5
-    else: stab_pts = 2
-    
-    score += stab_pts
-    breakdown['Stability'] = f"{stab_pts}/10 (File Count: {len(files_dict)})"
-
-    return score, breakdown
-
-def build_full_tree(files_dict):
-    lines = ["PROJECT ARCHITECTURE", "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"]
-    sorted_files = sorted(files_dict.keys())
-    has_main = any('main' in f.lower() or 'app' in f.lower() for f in sorted_files)
-    
-    lines.append("│")
-    if has_main:
-        lines.append("├── 🚀 Entry point detected")
-    
-    lines.append("│\n├── 📁 File Structure")
-    
-    for f in sorted_files:
-        parts = f.split('/')
-        depth = len(parts) - 1
-        indent = "│   " * depth
-        name = parts[-1]
-        lines.append(f"{indent}├── 📄 {name} ({len(files_dict[f].splitlines())} lines)")
-        
-    return "\n".join(lines)
-
-class StringIO:
-    def __init__(self): self.buffer = io.StringIO()
-    def write(self, text): self.buffer.write(text)
-    def get_value(self): return self.buffer.getvalue()
-
-def create_txt_content(files_dict):
-    output = StringIO()
-    output.write("RIKAI CODE EXPORT\n")
-    output.write("==========================================\n\n")
-    output.write(f"Note: The following file types were excluded from detailed content processing to optimize performance: {', '.join(SKIP_EXTENSIONS)}\n\n")
-    output.write(build_full_tree(files_dict) + "\n\n")
-    output.write("FILE CONTENTS\n")
-    output.write("==========================================\n\n")
-    for filename, content in files_dict.items():
-        output.write(f"\n\n----- START: {filename} -----\n\n")
-        output.write(content)
-        output.write(f"\n\n----- END: {filename} -----\n")
-    return output.get_value()
-
-def export_html(files_dict):
-    html = "<html><head><style>body{font-family:monospace; background:#171717; color:#ededed;} .file{margin-bottom:20px; border-bottom:1px solid #333;} h3{color:#d3a0eb;}</style></head><body>"
-    html += f"<h1>RikaiCode Export</h1>"
-    html += f"<p><strong>Note:</strong> The following file types were excluded from detailed content processing to optimize performance: {', '.join(SKIP_EXTENSIONS)}</p>"
-    html += f"<pre>{build_full_tree(files_dict)}</pre><hr>"
-    for k, v in files_dict.items():
-        html += f"<div class='file'><h3>{k}</h3><pre>{v}</pre></div>"
-    html += "</body></html>"
-    return html
-
-
-def export_docx(files_dict):
-    doc = Document()
-    doc.add_heading('RikaiCode Repository Export', 0)
-    doc.add_paragraph(f"Note: The following file types were excluded from detailed content processing to optimize performance: {', '.join(SKIP_EXTENSIONS)}")
-    doc.add_paragraph(build_full_tree(files_dict))
-    for filename, content in files_dict.items():
-        doc.add_heading(filename, level=1)
-        try: doc.add_paragraph(content)
-        except: doc.add_paragraph("[Content error]")
-    file_stream = io.BytesIO()
-    doc.save(file_stream)
-    file_stream.seek(0)
-    return file_stream
-
-def export_pdf(files_dict):
-    class PDF(FPDF):
-        def __init__(self):
-            super().__init__()
-            self.logo_path = LOGO_PATH
-        
-        def footer(self):
-       
-            self.set_y(-15)
-            self.set_font('Arial', 'I', 8)
-            
-
-            gen_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            self.cell(0, 10, f'Generated on {gen_date}', 0, 0, 'R')
-            
-            
-            if os.path.exists(self.logo_path):
-
-                self.image(self.logo_path, x=10, y=self.h - 12, h=5)
-
-                self.set_xy(17, self.h - 12)
-                self.cell(0, 5, 'RikaiCode', 0, 0, 'L')
-            else:
-                self.set_x(10)
-                self.cell(0, 10, 'RikaiCode', 0, 0, 'L')
-
-    pdf = PDF()
-    pdf.add_page()
-    pdf.set_font("Arial", size=12)
-    pdf.cell(200, 10, txt="RikaiCode Repository Export", ln=1, align='C')
-    pdf.ln(5)
-    pdf.set_font("Arial", size=10)
-    pdf.multi_cell(0, 5, f"Note: The following file types were excluded from detailed content processing to optimize performance: {', '.join(SKIP_EXTENSIONS)}")
-    pdf.ln(5)
-    
-    for filename, content in files_dict.items():
-        pdf.set_font("Arial", 'B', size=14)
-        pdf.cell(200, 10, txt=filename, ln=1)
-        pdf.set_font("Arial", size=10)
-        try:
-    
-            if len(content) > 5000:
-                safe_content = content[:5000] + "\n... [TRUNCATED FOR PDF PREVIEW]"
-            else:
-                safe_content = content
-                
-            safe_content = safe_content.encode('latin-1', 'replace').decode('latin-1')
-            pdf.multi_cell(0, 5, safe_content)
-            pdf.ln(5)
-        except: pass
-    
-
-    pdf_bytes = pdf.output(dest='S')
-    
-
-    if isinstance(pdf_bytes, str):
-        pdf_bytes = pdf_bytes.encode('latin-1')
-        
-    file_stream = io.BytesIO(pdf_bytes)
-    file_stream.seek(0)
-    return file_stream
-
-def export_json(files_dict):
-    data = {
-        "metadata": { 
-            "generated_at": datetime.now().isoformat(), 
-            "file_count": len(files_dict), 
-            "architecture": build_full_tree(files_dict),
-            "excluded_types": list(SKIP_EXTENSIONS)
-        },
-        "files": [{"name": k, "content": v} for k, v in files_dict.items()]
-    }
-    return json.dumps(data, indent=2)
-
-
-
-def scan_dependencies(files_dict):
-    """Scans for dependencies in requirements.txt, package.json, or imports."""
-    deps = set()
-    
-   
-    if 'requirements.txt' in files_dict:
-        for line in files_dict['requirements.txt'].splitlines():
-            if line.strip() and not line.startswith('#'):
-                pkg = line.strip().split('==')[0].split('>=')[0].split('<')[0]
-                deps.add(f"🐍 {pkg}")
-    
-    if 'package.json' in files_dict:
-        try:
-            data = json.loads(files_dict['package.json'])
-            for pkg in data.get('dependencies', {}).keys():
-                deps.add(f"📦 {pkg}")
-            for pkg in data.get('devDependencies', {}).keys():
-                deps.add(f"🛠️ {pkg} (dev)")
-        except: pass
-
-    
-    py_files = [f for f in files_dict if f.endswith('.py')][:5] 
-    for f in py_files:
-        matches = re.findall(r'^(?:import|from)\s+([a-zA-Z0-9_]+)', files_dict[f], re.MULTILINE)
-        for m in matches:
-            if m not in ['os', 'sys', 're', 'json', 'time', 'math']: # Filter stdlib
-                deps.add(f"🐍 {m}")
-
-    return sorted(list(deps))
-
-def extract_code_structure(files_dict):
-    """Extracts classes and functions for a summary view."""
-    structure = {}
-   
-    target_files = [f for f in files_dict if f.endswith(('.py', '.js', '.ts'))] 
-    
-    for filename in target_files[:200]: # Limit to 200 files for performance
-        content = files_dict[filename]
-        
-
-        if not content: continue
-        
-        classes = re.findall(r'class\s+([A-Za-z0-9_]+)', content)
-        funcs = re.findall(r'def\s+([A-Za-z0-9_]+)', content)
-        
-        if classes or funcs:
-            structure[filename] = {
-                "classes": classes,
-                "functions": funcs
-            }
-            
-      
-        del content
-        
-    return structure
-
-def scan_security_issues(files_dict):
-    """Scans for potential hardcoded secrets."""
-    issues = []
-
-    patterns = {
-        "AWS Access Key": r"AKIA[0-9A-Z]{16}",
-        "Generic Secret": r"(?i)(api_key|apikey|secret|password|token)\s*=\s*['\"][^'\"]+['\"]",
-        "Private Key": r"-----BEGIN (RSA |DSA |EC |OPENSSH )?PRIVATE KEY-----"
-    }
-    
-    for filename, content in files_dict.items():
-     
-        if len(content) > 100000: continue
-        
-        for issue_type, pattern in patterns.items():
-            matches = re.findall(pattern, content)
-            if matches:
-                
-                lines = content.splitlines()
-                line_nums = []
-                for i, line in enumerate(lines, 1):
-                    if re.search(pattern, line):
-                        line_nums.append(i)
-                
-                issues.append({
-                    "file": filename,
-                    "type": issue_type,
-                    "count": len(matches),
-                    "lines": line_nums[:5] 
-                })
-    return issues
-
-def scan_tech_debt(files_dict):
-    """Scans for TODO, FIXME, HACK comments."""
-    debt_items = []
-    patterns = {
-        "TODO": r"(?:#|//)\s*TODO:?\s*(.*)",
-        "FIXME": r"(?:#|//)\s*FIXME:?\s*(.*)",
-        "HACK": r"(?:#|//)\s*HACK:?\s*(.*)",
-        "BUG": r"(?:#|//)\s*BUG:?\s*(.*)"
-    }
-    
-    for name, content in files_dict.items():
-     
-        if not name.endswith(('.py', '.js', '.ts', '.java', '.go', '.rs', '.c', '.cpp')): continue
-        lines = content.splitlines()
-        for i, line in enumerate(lines, 1):
-            for tag, pat in patterns.items():
-                match = re.search(pat, line, re.IGNORECASE)
-                if match:
-                    msg = match.group(1).strip() if match.groups() else ""
-                    debt_items.append({
-                        "file": name,
-                        "line": i,
-                        "type": tag,
-                        "message": msg[:50]
-                    })
-    return debt_items
-
-def detect_infrastructure(files_dict):
-    """Detects framework and infra files."""
-    detections = []
-    checks = {
-        "Docker": ["Dockerfile", "docker-compose.yml", ".dockerignore"],
-        "Kubernetes": ["k8s/", "deployment.yaml", "helm/", "Chart.yaml"],
-        "CI/CD": [".github/workflows/", ".gitlab-ci.yml", "Jenkinsfile", "azure-pipelines.yml"],
-        "Tests": ["test_", "_test.py", ".spec.js", ".test.js", "tests/"],
-        "Documentation": ["docs/", "mkdocs.yml", "sphinx/", "readthedocs.yaml"],
-        "Config": [".env.example", "config.yaml", "settings.py"]
-    }
-    
-    for tech, keys in checks.items():
-        for key in keys:
-            if any(key in f for f in files_dict):
-                detections.append(tech)
-                break
-    return detections
-
-def count_entities(files_dict):
-    """Counts total classes, functions, and imports."""
-    total = {"classes": 0, "functions": 0, "imports": 0}
-    for name, content in files_dict.items():
-        if not name.endswith(('.py', '.js', '.ts')): continue
-        total['classes'] += len(re.findall(r'class\s+([A-Za-z0-9_]+)', content))
-        total['functions'] += len(re.findall(r'def\s+([A-Za-z0-9_]+)', content))
-        total['imports'] += len(re.findall(r'^(?:import|from)\s+', content, re.MULTILINE))
-    return total
-
-def extract_python_function_code(content, func_name):
-    """
-    Attempts to extract a specific function's code from Python content.
-    Uses indentation logic to capture the full block.
-    """
-    lines = content.splitlines()
-    code_lines = []
-    recording = False
-    base_indent = None
-    
-    for line in lines:
-      
-        if re.match(rf"^\s*def\s+{re.escape(func_name)}\s*\(", line):
-            recording = True
-         
-            base_indent = len(line) - len(line.lstrip())
-            code_lines.append(line)
-            continue
-            
-        if recording:
-          
-            if not line.strip():
-                code_lines.append(line)
-                continue
-                
-            current_indent = len(line) - len(line.lstrip())
-            
-   
-            if current_indent <= base_indent:
-                break
-            
-            code_lines.append(line)
-            
-    return "\n".join(code_lines)
-
-
-
-
-def get_zhipu_client():
-    if not AI_AVAILABLE:
-        return None
-    
-   
-    api_key = os.environ.get("ZHIPUAI_API_KEY")
-    
-    if not api_key:
-        return None
-        
-    return ZaiClient(api_key=api_key)
-
-def ai_analyze_architecture(client, files_dict):
-    """Generates a brief summary of the architecture using Rikai (GLM)."""
-    if not client:
-        return "⚠️ AI Analysis Failed: API Key not found."
-    
-    try:
-     
-        tree = build_full_tree(files_dict)
-     
-        if len(tree) > 3000:
-            tree = tree[:3000] + "\n... (truncated)"
-            
- 
-        readme_content = ""
-        for fname in files_dict:
-            if 'readme' in fname.lower():
-                readme_content = files_dict[fname][:1000] 
-                break
-        
-   
-        prompt = f"""
-        You are Rikai, an AI code architect. Analyze the following repository structure and README snippet.
-        
-        File Tree:
-        {tree}
-        
-        README Snippet:
-        {readme_content}
-        
-        Task:
-        1. Identify the architectural pattern (e.g., MVC, Microservices, Library, CLI Tool).
-        2. Summarize the purpose of this project in 2 sentences.
-        3. Identify the likely entry point file.
-        """
-        
-
-        response = client.chat.completions.create(
-            model="GLM-4.6V-Flash", 
-            messages=[
-                {"role": "system", "content": "You are Rikai, a senior software architect providing concise code reviews."},
-                {"role": "user", "content": prompt}
-            ],
-        )
-        return response.choices[0].message.content
-        
-    except Exception as e:
-        return "We’re sorry. Something went wrong during the AI analysis. This may be due to a temporary server issue or high traffic or the repository might be too large. Please try again later."
-
-def ai_explain_code(client, code_snippet, func_name):
-    """Explains a specific function using Rikai (GLM)."""
-    if not client:
-        return "⚠️ AI Explanation Failed: API Key not found."
-    
-    try:
-        prompt = f"""
-        You are Rikai, an AI coding assistant. Explain the following Python function named '{func_name}'.
-        Focus on:
-        1. Inputs and Outputs.
-        2. Core logic side effects.
-        3. Potential edge cases or bugs.
-        
-        Code:
-        ```
-        {code_snippet}
-        ```
-        """
-        
-        response = client.chat.completions.create(
-            model="GLM-4.6V-Flash",
-            messages=[
-                {"role": "system", "content": "You are a coding assistant. Be concise and accurate."},
-                {"role": "user", "content": prompt}
-            ],
-        )
-        return response.choices[0].message.content
-        
-    except Exception as e:
-        return "Unfortunately, an error occurred while explaining the code. The AI model might be temporarily unavailable or your API plan might have limitations."
-
-
-
-
-def process_uploaded_files(uploaded_files):
-    files_dict = {}
-    for f in uploaded_files:
-        try:
-      
-            ext = os.path.splitext(f.name)[1].lower()
-            if ext in SKIP_EXTENSIONS:
-                files_dict[f.name] = ""
-            else:
-                content = f.read().decode('utf-8')
-                files_dict[f.name] = content
-     
-            del content
-        except: pass
-    gc.collect() 
-    return files_dict
-
-def process_zip_file(zip_file):
-    files_dict = {}
-    with zipfile.ZipFile(zip_file) as z:
-        for filename in z.namelist():
-            if filename.endswith('/'): continue
-            
-            ext = os.path.splitext(filename)[1].lower()
-            clean_name = filename.split('/', 1)[-1] if '/' in filename else filename
-            
-            if ext in SKIP_EXTENSIONS:
-                files_dict[clean_name] = "" 
-                continue
-
-            try:
-                with z.open(filename) as f:
-                    content = f.read().decode('utf-8')
-                    files_dict[clean_name] = content
-                    del content 
-            except: pass
-    gc.collect() 
-    return files_dict
-
-def process_github_url(url):
-    files_dict = {}
-    repo_meta = {}
-    pr_stats = {}
-    
-    if url.endswith('.git'): url = url[:-4]
-    
-    try:
-        parts = url.rstrip('/').split('/')
-        owner, repo = parts[-2], parts[-1]
-    except:
-        st.error("Invalid GitHub URL format.")
-        return {}, {}, {}
-
-    api_base = f"https://api.github.com/repos/{owner}/{repo}"
-    
-    progress_bar = st.progress(0, text="Initializing...")
-    
-    try:
-        progress_bar.progress(10, text="📡 Fetching GitHub metadata...")
-        meta_r = requests.get(api_base)
-        if meta_r.status_code == 200:
-            data = meta_r.json()
-            repo_meta['stars'] = data.get('stargazers_count', 0)
-            repo_meta['forks'] = data.get('forks_count', 0)
-            repo_meta['watchers'] = data.get('subscribers_count', data.get('watchers_count', 0)) 
-            repo_meta['open_issues'] = data.get('open_issues_count', 0)
-            repo_meta['language'] = data.get('language', 'Unknown')
-            repo_meta['archived'] = data.get('archived', False)
-            repo_meta['pushed_at'] = data.get('pushed_at', None)
-            repo_meta['created_at'] = data.get('created_at', None)
-            
-
-            if repo_meta['created_at']:
-                created = datetime.strptime(repo_meta['created_at'], "%Y-%m-%dT%H:%M:%SZ")
-                age_days = (datetime.utcnow() - created).days
-                repo_meta['age_years'] = round(age_days / 365, 1)
-        else:
-            progress_bar.empty()
-            st.error(f"GitHub API Error: {meta_r.status_code}")
-            return {}, {}, {}
-
-        
-        progress_bar.progress(15, text="📡 Analyzing Pull Requests...")
-        try:
-            r_open = requests.get(f"https://api.github.com/search/issues?q=repo:{owner}/{repo}+type:pr+state:open")
-            open_prs = r_open.json().get('total_count', 0) if r_open.status_code == 200 else 0
-            
-            r_merged = requests.get(f"https://api.github.com/search/issues?q=repo:{owner}/{repo}+type:pr+is:merged")
-            merged_prs = r_merged.json().get('total_count', 0) if r_merged.status_code == 200 else 0
-            
-            r_closed = requests.get(f"https://api.github.com/search/issues?q=repo:{owner}/{repo}+type:pr+state:closed")
-            closed_total = r_closed.json().get('total_count', 0) if r_closed.status_code == 200 else 0
-            
-            pr_stats['open'] = open_prs
-            pr_stats['merged'] = merged_prs
-            pr_stats['closed_rejected'] = max(0, closed_total - merged_prs)
-            pr_stats['total_prs'] = open_prs + closed_total
-            
-            if closed_total > 0:
-                pr_stats['merge_rate'] = merged_prs / closed_total
-            else:
-                pr_stats['merge_rate'] = 0
-                
-        except Exception as e:
-            st.warning(f"Could not fetch detailed PR stats: {e}")
-
-    
-        progress_bar.progress(20, text="📡 Fetching commit history...")
-        commits_r = requests.get(f"{api_base}/commits?per_page=100")
-        commit_dates = []
-
-        repo_meta['commit_datetimes'] = [] 
-        
-        if commits_r.status_code == 200:
-            for c in commits_r.json():
-                try:
-                    date_str = c['commit']['author']['date']
-            
-                    dt = datetime.strptime(date_str, "%Y-%m-%dT%H:%M:%SZ")
-                    repo_meta['commit_datetimes'].append(dt)
-                    
-                    d = dt.date()
-                    commit_dates.append(d)
-                except: pass
-            repo_meta['commit_dates'] = commit_dates
-
-
-        archive_url_main = f"{api_base}/zipball/main"
-        archive_url_master = f"{api_base}/zipball/master"
-        
-        progress_bar.progress(30, text="🔍 Checking Main branch...")
-        r = requests.get(archive_url_main, stream=True)
-        
-        if r.status_code == 404:
-            progress_bar.progress(40, text="🔍 Main not found. Checking Master...")
-            r = requests.get(archive_url_master, stream=True)
-        
-        if r.status_code != 200:
-            progress_bar.empty()
-            st.error("Could not fetch repository content.")
-            return {}, {}, {}
-
-        total_size = int(r.headers.get('content-length', 0))
-        chunk_data = []
-        downloaded = 0
-        
-        progress_bar.progress(50, text=f"⬇️ Downloading ({int(total_size/1024)} KB)...")
-        
-        for chunk in r.iter_content(chunk_size=8192):
-            if chunk:
-                chunk_data.append(chunk)
-                downloaded += len(chunk)
-                if total_size > 0:
-                    pct = 50 + int((downloaded / total_size) * 30)
-                    progress_bar.progress(pct, text=f"⬇️ Downloading... {int(downloaded/1024)}/{int(total_size/1024)} KB")
-        
-        progress_bar.progress(80, text="📦 Decompressing...")
-        zip_data = io.BytesIO(b''.join(chunk_data))
-        
-        with zipfile.ZipFile(zip_data) as z:
-            file_list = z.namelist()
-            total_files = len(file_list)
-            processed_count = 0
-            
-            for filename in file_list:
-                if filename.endswith('/'): continue
-                
-              
-                ext = os.path.splitext(filename)[1].lower()
-                clean_name = filename.split('/', 1)[-1] if '/' in filename else filename
-
-                if ext in SKIP_EXTENSIONS:
-                    files_dict[clean_name] = "" 
-                else:
-                    try:
-                        with z.open(filename) as f:
-                            content = f.read().decode('utf-8')
-                            files_dict[clean_name] = content
-                            del content 
-                    except: pass
-                
-                processed_count += 1
-                if total_files > 0:
-                    pct = 80 + int((processed_count / total_files) * 20)
-                    progress_bar.progress(pct, text=f"⚙️ Processing {processed_count}/{total_files}")
-        
-        progress_bar.progress(100, text="✔️ Done!")
-        time.sleep(0.5)
-        progress_bar.empty()
-        
-        
-        del chunk_data
-        del zip_data
-        gc.collect()
-        
-    except Exception as e:
-        progress_bar.empty()
-        st.error(f"Error: {str(e)}")
-        
-    return files_dict, repo_meta, pr_stats
-
-def process_gitlab_url(url):
-    files_dict = {}
-    repo_meta = {}
-    pr_stats = {}
-    
-    if url.endswith('.git'): url = url[:-4]
-    
-    try:
-       
-        parts = url.rstrip('/').split('/')
-        if 'gitlab.com' not in parts:
-            st.error("Invalid GitLab URL. Must contain gitlab.com")
-            return {}, {}, {}
-            
-        idx = parts.index('gitlab.com')
-        path_parts = parts[idx+1:]
-        if len(path_parts) < 1:
-             st.error("Invalid GitLab URL: No project path found.")
-             return {}, {}, {}
-        
-        path = '/'.join(path_parts)
-        
-    except Exception as e:
-        st.error(f"Invalid GitLab URL format: {e}")
-        return {}, {}, {}
-
-
-    encoded_path = urllib.parse.quote_plus(path)
-    api_base = f"https://gitlab.com/api/v4/projects/{encoded_path}"
-    
-    progress_bar = st.progress(0, text="Initializing GitLab Fetch...")
-    
-    try:
-        progress_bar.progress(10, text="📡 Fetching GitLab metadata...")
-        meta_r = requests.get(api_base)
-        
-        if meta_r.status_code == 200:
-            data = meta_r.json()
-            repo_meta['stars'] = data.get('star_count', 0)
-            repo_meta['forks'] = data.get('forks_count', 0)
-            repo_meta['watchers'] = data.get('star_count', 0) 
-            repo_meta['open_issues'] = data.get('open_issues_count', 0)
-            repo_meta['archived'] = data.get('archived', False)
-            
-       
-            repo_meta['language'] = 'N/A'
-            try:
-                lang_r = requests.get(f"{api_base}/languages")
-                if lang_r.status_code == 200:
-                    langs = lang_r.json()
-                    if langs:
-             
-                        main_lang = max(langs, key=langs.get)
-                        repo_meta['language'] = main_lang
-            except: pass
-            
-         
-            repo_meta['pushed_at'] = data.get('last_activity_at')
-            repo_meta['created_at'] = data.get('created_at')
-            
-            if repo_meta['created_at']:
-              
-                created_str = repo_meta['created_at'].replace('Z', '+00:00')
-                created = datetime.fromisoformat(created_str)
-                age_days = (datetime.now(created.tzinfo) - created).days
-                repo_meta['age_years'] = round(age_days / 365, 1)
-                
-            default_branch = data.get('default_branch', 'main')
-        else:
-            progress_bar.empty()
-            st.error(f"GitLab API Error: {meta_r.status_code} - Project might be private or URL incorrect.")
-            return {}, {}, {}
-
-      
-        progress_bar.progress(20, text="📡 Fetching commit history...")
-        commits_r = requests.get(f"{api_base}/repository/commits?per_page=100")
-        commit_dates = []
-        repo_meta['commit_datetimes'] = []
-        
-        if commits_r.status_code == 200:
-            for c in commits_r.json():
-                try:
-                    date_str = c['created_at']
-    
-                    d = datetime.fromisoformat(date_str.replace('Z', '+00:00')).date()
-                    commit_dates.append(d)
-                    
-                    
-                    dt = datetime.fromisoformat(date_str.replace('Z', '+00:00'))
-                    repo_meta['commit_datetimes'].append(dt)
-                except: pass
-            repo_meta['commit_dates'] = commit_dates
-            
-  
-        progress_bar.progress(30, text="📡 Analyzing Merge Requests...")
-        try:
-  
-            def get_total_mr_count(state):
-        
-                r = requests.get(f"{api_base}/merge_requests?state={state}&per_page=1")
-                if r.status_code == 200:
-                   
-                    total = r.headers.get('X-Total')
-                    if total:
-                        return int(total)
-                    
-                    
-                    count = 0
-                    page = 1
-                    while True:
-                        r_page = requests.get(f"{api_base}/merge_requests?state={state}&per_page=100&page={page}")
-                        if r_page.status_code != 200: break
-                        items = r_page.json()
-                        count += len(items)
-                        if len(items) < 100: break
-                        page += 1
-                    return count
-                return 0
-
-            open_count = get_total_mr_count('opened')
-            merged_count = get_total_mr_count('merged')
-            closed_count = get_total_mr_count('closed')
-            
-            pr_stats['open'] = open_count
-            pr_stats['merged'] = merged_count
-            pr_stats['closed_rejected'] = closed_count
-            
-            total_finalized = merged_count + closed_count
-            if total_finalized > 0:
-                pr_stats['merge_rate'] = merged_count / total_finalized
-            else:
-                pr_stats['merge_rate'] = 0
-            
-            pr_stats['total_prs'] = open_count + merged_count + closed_count
-                
-        except Exception as e:
-            st.warning(f"Could not fetch MR stats: {e}")
-
-
-        progress_bar.progress(40, text="⬇️ Downloading archive...")
-        archive_url = f"{api_base}/repository/archive.zip?sha={default_branch}"
-        
-        r = requests.get(archive_url, stream=True)
-        if r.status_code != 200:
-
-            archive_url = f"{api_base}/repository/archive.zip?sha=master"
-            r = requests.get(archive_url, stream=True)
-            
-        if r.status_code != 200:
-            progress_bar.empty()
-            st.error("Could not fetch repository content. Check if project is public.")
-            return {}, {}, {}
-
-        total_size = int(r.headers.get('content-length', 0))
-        chunk_data = []
-        downloaded = 0
-        
-        for chunk in r.iter_content(chunk_size=8192):
-            if chunk:
-                chunk_data.append(chunk)
-                downloaded += len(chunk)
-                if total_size > 0:
-                    pct = 50 + int((downloaded / total_size) * 30)
-                    progress_bar.progress(pct, text=f"⬇️ Downloading... {int(downloaded/1024)}/{int(total_size/1024)} KB")
-        
-        progress_bar.progress(80, text="📦 Decompressing...")
-        zip_data = io.BytesIO(b''.join(chunk_data))
-        
-        with zipfile.ZipFile(zip_data) as z:
-            file_list = z.namelist()
-            total_files = len(file_list)
-            processed_count = 0
-            
-            for filename in file_list:
-                if filename.endswith('/'): continue
-                
-                ext = os.path.splitext(filename)[1].lower()
-               
-                clean_name = filename.split('/', 1)[-1] if '/' in filename else filename
-
-                if ext in SKIP_EXTENSIONS:
-                    files_dict[clean_name] = "" 
-                else:
-                    try:
-                        with z.open(filename) as f:
-                            content = f.read().decode('utf-8')
-                            files_dict[clean_name] = content
-                            del content 
-                    except: pass
-                
-                processed_count += 1
-                if total_files > 0:
-                    pct = 80 + int((processed_count / total_files) * 20)
-                    progress_bar.progress(pct, text=f"⚙️ Processing {processed_count}/{total_files}")
-        
-        progress_bar.progress(100, text="✔️ Done!")
-        time.sleep(0.5)
-        progress_bar.empty()
-        
-        del chunk_data
-        del zip_data
-        gc.collect()
-        
-    except Exception as e:
-        progress_bar.empty()
-        st.error(f"Error: {str(e)}")
-        
-    return files_dict, repo_meta, pr_stats
+apply_styles()
 
 
 if 'files_data' not in st.session_state: st.session_state.files_data = {}
@@ -1604,62 +370,6 @@ if st.session_state.files_data:
             st.info("No structure detected or files too large.")
 
 
-
-    st.markdown("---")
-    st.markdown("### 🤖 Rikai AI Analysis")
-    
-    client = get_zhipu_client()
-    
-    if not AI_AVAILABLE:
-        st.error("⚠️ AI library not found. Please check equirements.txt.")
-    elif not client:
-        st.warning("⚠️ API KEY not found. AI features are disabled.")
-        st.caption("IF running locally, enable Rikai AI by adding your API Key to a `.env` file")
-    else:
-
-        with st.expander("- Architecture Overview by Rikai", expanded=False):
-            if st.button("Analyze Architecture", key="btn_arch_ai"):
-                with st.spinner("Rikai is analyzing the repository structure... This may take time..."):
-                    analysis = ai_analyze_architecture(client, files_data)
-         
-                    html_analysis = markdown.markdown(analysis)
-                    st.markdown(f'<div class="ai-response-box">{html_analysis}</div>', unsafe_allow_html=True)
-
-
-        with st.expander("- Explain Python Functions with Rikai", expanded=False):
-            st.write("Select a Python function to get an explanation.")
-            
-          
-            structure = extract_code_structure(files_data)
-            all_funcs = []
-            for fname, data in structure.items():
-                for func in data['functions']:
-                    all_funcs.append(f"{fname}::{func}")
-            
-            if all_funcs:
-                selected_func_path = st.selectbox("Select Function", all_funcs, key="sel_func_ai")
-                
-                if st.button("Explain Function", key="btn_func_ai"):
-                    if "::" in selected_func_path:
-                        fname, func_name = selected_func_path.split("::")
-                        content = files_data.get(fname, "")
-                        
-                        if content:
-                            with st.spinner(f"Rikai is explaining {func_name}..."):
-                                
-                                func_code = extract_python_function_code(content, func_name)
-                                
-                                if func_code:
-                                    explanation = ai_explain_code(client, func_code, func_name)
-                                 
-                                    html_explanation = markdown.markdown(explanation)
-                                    st.markdown(f'<div class="ai-response-box">{html_explanation}</div>', unsafe_allow_html=True)
-                                else:
-                                    st.warning("Could not extract function code for analysis.")
-            else:
-                st.info("No Python functions found to explain.")
-
-
     st.markdown("---")
     st.markdown("### 📉 File Distribution Analysis")
     
@@ -1700,6 +410,174 @@ if st.session_state.files_data:
             st.markdown(f'<div class="arch-box">{arch_str}</div>', unsafe_allow_html=True)
     else:
         st.markdown(f'<div class="arch-box">{arch_str}</div>', unsafe_allow_html=True)
+
+
+
+    st.markdown("---")
+    st.markdown("### 🤖 Rikai AI Analysis & Synopsis")
+    
+    client = get_zhipu_client()
+    
+    if not AI_AVAILABLE:
+        st.error("⚠️ AI library not found. Please check requirements.txt.")
+    elif not client:
+        st.warning("⚠️ API KEY not found. AI features are disabled.")
+        st.caption("IF running locally, enable Rikai AI by adding your API Key to a `.env` file")
+    else:
+   
+        with st.expander("🛠️ Architecture Overview", expanded=False):
+            if st.button("Analyze Architecture", key="btn_arch_ai"):
+                with st.spinner("Rikai is analyzing the repository structure... This may take time..."):
+                    analysis = ai_analyze_architecture(client, files_data)
+                    st.session_state['ai_res_arch'] = analysis
+            
+            if 'ai_res_arch' in st.session_state:
+                resp = st.session_state['ai_res_arch']
+                st.markdown(f'<div class="ai-response-box">{markdown.markdown(resp)}</div>', unsafe_allow_html=True)
+                c1, c2 = st.columns(2)
+                with c1:
+                    st.download_button("📥 Download Response as DOCX", export_ai_response_docx("Architecture Overview", resp), file_name="Rikai_Architecture.docx")
+                with c2:
+                    st.download_button("📥 Download Response as PDF", export_ai_response_pdf("Architecture Overview", resp), file_name="Rikai_Architecture.pdf")
+
+      
+        with st.expander("🛠️ Project Synopsis & Summary", expanded=False):
+            if st.button("Generate Project Synopsis", key="btn_synopsis"):
+                with st.spinner("Generating executive summary..."):
+                    st.session_state['ai_res_synopsis'] = ai_project_synopsis(client, files_data)
+            
+            if 'ai_res_synopsis' in st.session_state:
+                resp = st.session_state['ai_res_synopsis']
+                st.markdown(f'<div class="ai-response-box">{markdown.markdown(resp)}</div>', unsafe_allow_html=True)
+                c1, c2 = st.columns(2)
+                with c1:
+                    st.download_button("📥 Download Respnse as DOCX", export_ai_response_docx("Project Synopsis", resp), file_name="Rikai_Synopsis.docx")
+                with c2:
+                    st.download_button("📥 Download Response as PDF", export_ai_response_pdf("Project Synopsis", resp), file_name="Rikai_Synopsis.pdf")
+
+
+        with st.expander("🛠️ Complexity & Maintainability", expanded=False):
+            if st.button("Analyze Complexity", key="btn_complexity"):
+                with st.spinner("Calculating complexity metrics..."):
+                    st.session_state['ai_res_comp'] = ai_complexity_analysis(client, files_data)
+            
+            if 'ai_res_comp' in st.session_state:
+                resp = st.session_state['ai_res_comp']
+                st.markdown(f'<div class="ai-response-box">{markdown.markdown(resp)}</div>', unsafe_allow_html=True)
+                c1, c2 = st.columns(2)
+                with c1:
+                    st.download_button("📥 Download Response as DOCX", export_ai_response_docx("Complexity Analysis", resp), file_name="Rikai_Complexity.docx")
+                with c2:
+                    st.download_button("📥 Download Response as PDF", export_ai_response_pdf("Complexity Analysis", resp), file_name="Rikai_Complexity.pdf")
+
+        
+        with st.expander("🛠️ Refactoring Suggestions", expanded=False):
+            if st.button("Suggest Refactoring", key="btn_refac"):
+                with st.spinner("Thinking about improvements..."):
+                    st.session_state['ai_res_refac'] = ai_refactoring_ideas(client, files_data)
+            
+            if 'ai_res_refac' in st.session_state:
+                resp = st.session_state['ai_res_refac']
+                st.markdown(f'<div class="ai-response-box">{markdown.markdown(resp)}</div>', unsafe_allow_html=True)
+                c1, c2 = st.columns(2)
+                with c1:
+                    st.download_button("📥 Download Response as DOCX", export_ai_response_docx("Refactoring Ideas", resp), file_name="Rikai_Refactoring.docx")
+                with c2:
+                    st.download_button("📥 Download Response as PDF", export_ai_response_pdf("Refactoring Ideas", resp), file_name="Rikai_Refactoring.pdf")
+
+
+        with st.expander("🚀 Developer Onboarding Guide", expanded=False):
+            if st.button("Create Onboarding Guide", key="btn_onboard"):
+                with st.spinner("Creating setup instructions..."):
+                    st.session_state['ai_res_onboard'] = ai_onboarding_guide(client, files_data, infra)
+            
+            if 'ai_res_onboard' in st.session_state:
+                resp = st.session_state['ai_res_onboard']
+                st.markdown(f'<div class="ai-response-box">{markdown.markdown(resp)}</div>', unsafe_allow_html=True)
+                c1, c2 = st.columns(2)
+                with c1:
+                    st.download_button("📥 Download Response as DOCX", export_ai_response_docx("Onboarding Guide", resp), file_name="Rikai_Onboarding.docx")
+                with c2:
+                    st.download_button("📥 Download Response as PDF", export_ai_response_pdf("Onboarding Guide", resp), file_name="Rikai_Onboarding.pdf")
+
+       
+        with st.expander("📦 Dependency Insights", expanded=False):
+            if st.button("Analyze Dependencies", key="btn_deps"):
+                with st.spinner("Checking dependencies..."):
+                    st.session_state['ai_res_deps'] = ai_dependency_suggestions(client, files_data)
+            
+            if 'ai_res_deps' in st.session_state:
+                resp = st.session_state['ai_res_deps']
+                st.markdown(f'<div class="ai-response-box">{markdown.markdown(resp)}</div>', unsafe_allow_html=True)
+                c1, c2 = st.columns(2)
+                with c1:
+                    st.download_button("📥 Download Response as DOCX", export_ai_response_docx("Dependency Insights", resp), file_name="Rikai_Dependencies.docx")
+                with c2:
+                    st.download_button("📥 Download Response as PDF", export_ai_response_pdf("Dependency Insights", resp), file_name="Rikai_Dependencies.pdf")
+
+    
+        with st.expander("🛠️ Interactive Code Review", expanded=False):
+            st.write("Select a file for a detailed AI code review.")
+            reviewable_files = [f for f in files_data if files_data[f]] 
+            selected_file_rev = st.selectbox("Select File", reviewable_files, key="sel_file_rev")
+            
+            if st.button("Review Selected File", key="btn_review"):
+                if selected_file_rev:
+                    code = files_data[selected_file_rev]
+                    with st.spinner(f"Reviewing {selected_file_rev}..."):
+                        st.session_state['ai_res_review'] = ai_review_file(client, selected_file_rev, code)
+                        st.session_state['ai_res_review_name'] = selected_file_rev
+            
+            if 'ai_res_review' in st.session_state:
+                resp = st.session_state['ai_res_review']
+                fname = st.session_state.get('ai_res_review_name', 'File')
+                st.markdown(f'<div class="ai-response-box">{markdown.markdown(resp)}</div>', unsafe_allow_html=True)
+                c1, c2 = st.columns(2)
+                with c1:
+                    st.download_button("📥 Download Response as DOCX", export_ai_response_docx(f"Review: {fname}", resp), file_name=f"Rikai_Review_{fname}.docx")
+                with c2:
+                    st.download_button("📥 Download Response as PDF", export_ai_response_pdf(f"Review: {fname}", resp), file_name=f"Rikai_Review_{fname}.pdf")
+
+
+        with st.expander("💡 Explain Python Functions", expanded=False):
+            st.write("Select a Python function to get an explanation.")
+            
+            structure = extract_code_structure(files_data)
+            all_funcs = []
+            for fname, data in structure.items():
+                for func in data['functions']:
+                    all_funcs.append(f"{fname}::{func}")
+            
+            if all_funcs:
+                selected_func_path = st.selectbox("Select Function", all_funcs, key="sel_func_ai")
+                
+                if st.button("Explain Function", key="btn_func_ai"):
+                    if "::" in selected_func_path:
+                        fname, func_name = selected_func_path.split("::")
+                        content = files_data.get(fname, "")
+                        
+                        if content:
+                            with st.spinner(f"Rikai is explaining {func_name}..."):
+                                func_code = extract_python_function_code(content, func_name)
+                                
+                                if func_code:
+                                    st.session_state['ai_res_func'] = ai_explain_code(client, func_code, func_name)
+                                    st.session_state['ai_res_func_name'] = func_name
+                                else:
+                                    st.warning("Could not extract function code for analysis.")
+            
+            if 'ai_res_func' in st.session_state:
+                resp = st.session_state['ai_res_func']
+                fname = st.session_state.get('ai_res_func_name', 'Function')
+                st.markdown(f'<div class="ai-response-box">{markdown.markdown(resp)}</div>', unsafe_allow_html=True)
+                c1, c2 = st.columns(2)
+                with c1:
+                    st.download_button("📥 Download Response as DOCX", export_ai_response_docx(f"Explanation: {fname}", resp), file_name=f"Rikai_Expl_{fname}.docx")
+                with c2:
+                    st.download_button("📥 Download Response as PDF", export_ai_response_pdf(f"Explanation: {fname}", resp), file_name=f"Rikai_Expl_{fname}.pdf")
+            elif not all_funcs:
+                 st.info("No Python functions found to explain.")
+
 
   
     if not is_huge_repo:
@@ -1774,7 +652,7 @@ gc.collect()
 
 st.markdown("""
 <div class="footer-custom">
-    <div style="flex: 1; text-align: left;">Made with 🤍  by <strong>Aurumz</strong></div>
+    <div style="flex: 1; text-align: left;">Made with 🤍  by <strong>Aurumz</strong>. v1.0.0.</div>
     <div style="flex: 1; text-align: center;">
         <a href="https://github.com/aurumz-rgb/RikaiCode" target="_blank" class="footer-link">© 2026 aurumz-rgb — AGPL 3.0 License</a>
     </div>
