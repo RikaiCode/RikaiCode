@@ -1,10 +1,6 @@
 
 ![RikaiCodeBanner](assets/banner.png)
 
-# RikaiCode
-
-**Advanced Repository Flattener, Context Generator & Intelligent Grader.**
-
 *Flattening for AI, Context for understanding, and Grading for quality.*
 
 RikaiCode is a sophisticated, browser-based tool designed to turn complex codebases into structured, actionable data. Whether you need to feed code into an LLM, audit a project's quality, or simply understand a new architecture, RikaiCode provides the insights you need in a beautiful, dark-themed interface.
@@ -45,10 +41,11 @@ Export your entire flattened codebase into a single file for LLM context. Suppor
 
 ---
 
-<img src="assets/logo.png" width="140" align="left" style="margin-right: 15px;" />
-
 
 ## 📖 How to Use
+
+<img src="assets/logo.png" width="140" align="right" style="margin-right: 10px;" />
+
 
 1. **Select Source:** Choose between GitHub URL, GitLab URL, or Upload Files.
 2. **Analyze:** 
@@ -57,6 +54,23 @@ Export your entire flattened codebase into a single file for LLM context. Suppor
 3. **Explore:** View the repository grade, architecture diagram, security alerts, and code statistics.
 4. **AI Insights:** Expand the "Rikai AI Analysis" section to generate architectural summaries.
 5. **Export:** Use the export buttons at the bottom to download the flattened context.
+
+
+---
+
+## 📸 Screenshots
+
+*The following preview screenshots showing all the availbale features.* 
+ ![RikaiCodeBanner11](screenshots/1.png)
+ ![RikaiCodeBanner2](screenshots/2.png)
+ ![RikaiCodeBanner3](screenshots/3.png)
+ ![RikaiCodeBanner4](screenshots/4.png)
+ ![RikaiCodeBanner5](screenshots/5.png)
+
+*AI-generated architecture summary / code review and Repository code Flattener.* 
+ ![RikaiCodeBanner111](screenshots/6.png)
+ ![RikaiCodeBanner22](screenshots/7.png)|
+
 
 
 ---
@@ -131,22 +145,6 @@ RikaiCode is versatile and built for developers, security researchers, and data 
 4.  **Architecture Onboarding:**
     New team members can visualize the file structure, detect dependencies, and read AI-generated summaries to understand a project's architecture in minutes rather than hours.
 
-
-
----
-
-## 📸 Screenshots
-
-*The following preview screenshots showing all the availbale features.* 
- ![RikaiCodeBanner11](assets/1.png)
- ![RikaiCodeBanner2](assets/2.png)
- ![RikaiCodeBanner3](assets/3.png)
- ![RikaiCodeBanner4](assets/4.png)
- ![RikaiCodeBanner5](assets/5.png)
-
-*AI-generated architecture summary / code review and Repository code Flattener.* 
- ![RikaiCodeBanner11](assets/6.png)
- ![RikaiCodeBanner2](assets/7.png)|
 
 
 ---
@@ -236,19 +234,6 @@ RikaiCode is built on a modular architecture designed for maintainability and sc
 - **`analysis.py`**: The logic layer. Contains the grading algorithms, security scanners, dependency detectors, and AI integration functions.
 - **`export.py`**: The output layer. Generates downloadable reports in various formats (PDF, DOCX, JSON, etc.).
 
-```mermaid
-graph TD
-    A[User Input] --> B(app.py)
-    B --> C{processing.py}
-    C -->|Fetch/Unzip| D[Raw Files]
-    D --> E{analysis.py}
-    E -->|Grading & Scanning| F[Insights]
-    E -->|AI Prompts| G[GLM-4.7-Flash]
-    F --> H[UI Dashboard]
-    G --> H
-    H --> I{export.py}
-    I --> J[Downloadable Reports]
-```
 
 ---
 
