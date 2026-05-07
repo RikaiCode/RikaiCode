@@ -1,5 +1,5 @@
 
-![RikaiCodeBanner](assets/banner.png)
+![RikaiCodeBanner](assets/banner1.png)
 
 *Flattening for AI, Context for understanding, and Grading for quality.*
 
